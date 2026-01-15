@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', sans-serif;
+      background: #fff;
+      color: #000;
+      font-size: 11px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .header {
+      padding: 20px 16px 16px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .header h1 {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #666;
+    }
+
+    .section {
+      padding: 16px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .section:last-of-type {
+      border-bottom: none;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 500;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-radius: 4px;
+    }
+
+    .option:hover {
+      background: #f7f7f7;
+    }
+
+    .option.selected {
+      background: #000;
+      color: #fff;
+    }
+
+    .option input[type="radio"] {
+      display: none;
+    }
+
+    .option-label {
+      font-size: 11px;
+      font-weight: 400;
+    }
+
+    .option-desc {
+      font-size: 10px;
+      color: #999;
+    }
+
+    .option.selected .option-desc {
+      color: #666;
+    }
+
+    /* Slider styles */
+    .slider-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+
+    .slider-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .slider-label {
+      font-size: 11px;
+      color: #000;
+    }
+
+    .slider-sublabel {
+      font-size: 10px;
+      color: #999;
+    }
+
+    .slider-value {
+      font-size: 10px;
+      color: #666;
+      font-variant-numeric: tabular-nums;
+      min-width: 32px;
+      text-align: right;
+    }
+
+    .slider-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slider {
+      -webkit-appearance: none;
+      width: 80px;
+      height: 1px;
+      background: #ddd;
+      outline: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      background: #000;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    /* Toggle styles */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+    }
+
+    .toggle-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .toggle-label {
+      font-size: 11px;
+    }
+
+    .toggle-sublabel {
+      font-size: 10px;
+      color: #999;
+    }
+
+    .toggle {
+      width: 28px;
+      height: 14px;
+      background: #ddd;
+      border-radius: 7px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.15s;
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: #fff;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.15s;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .toggle.active {
+      background: #000;
+    }
+
+    .toggle.active::after {
+      transform: translateX(14px);
+    }
+
+    .test-btn {
+      width: 100%;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid #ddd;
+      color: #000;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 400;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+
+    .test-btn:hover {
+      background: #f7f7f7;
+      border-color: #ccc;
+    }
+
+    .test-btn:active {
+      background: #000;
+      color: #fff;
+      border-color: #000;
+    }
+
+    .footer {
+      padding: 12px 16px;
+      font-size: 10px;
+      color: #ccc;
+      text-align: center;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: #eee;
+      margin: 8px 0;
+    }
+
+    /* Dislike section */
+    .dislike-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .dislike-count {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .clear-btn {
+      background: none;
+      border: 1px solid #ddd;
+      padding: 4px 8px;
+      font-size: 10px;
+      color: #666;
+      cursor: pointer;
+      border-radius: 3px;
+      font-family: inherit;
+    }
+
+    .clear-btn:hover {
+      background: #f5f5f5;
+      color: #000;
+      border-color: #ccc;
+    }
+
+    .dislike-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      max-height: 60px;
+      overflow-y: auto;
+    }
+
+    .dislike-tag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #f5f5f5;
+      padding: 3px 6px;
+      font-size: 10px;
+      color: #666;
+      border-radius: 3px;
+    }
+
+    .dislike-tag button {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      color: #999;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .dislike-tag button:hover {
+      color: #000;
+    }
+
+    .dislike-empty {
+      font-size: 10px;
+      color: #ccc;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Bot Exploder</h1>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Noise Type</div>
+    <div class="option-group" id="sound-options">
+      <label class="option selected" data-value="white">
+        <input type="radio" name="sound" value="white" checked>
+        <span class="option-label">White noise</span>
+        <span class="option-desc">High frequency static</span>
+      </label>
+      <label class="option" data-value="brown">
+        <input type="radio" name="sound" value="brown">
+        <span class="option-label">Brown noise</span>
+        <span class="option-desc">Low frequency rumble</span>
+      </label>
+      <label class="option" data-value="pink">
+        <input type="radio" name="sound" value="pink">
+        <span class="option-label">Pink noise</span>
+        <span class="option-desc">Balanced spectrum</span>
+      </label>
+      <label class="option" data-value="blip">
+        <input type="radio" name="sound" value="blip">
+        <span class="option-label">Blip</span>
+        <span class="option-desc">Short click</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Visual</div>
+    <div class="option-group" id="visual-options">
+      <label class="option selected" data-value="dots">
+        <input type="radio" name="visual" value="dots" checked>
+        <span class="option-label">Dots</span>
+        <span class="option-desc">Scattered particles</span>
+      </label>
+      <label class="option" data-value="lines">
+        <input type="radio" name="visual" value="lines">
+        <span class="option-label">Lines</span>
+        <span class="option-desc">Radial strokes</span>
+      </label>
+      <label class="option" data-value="ring">
+        <input type="radio" name="visual" value="ring">
+        <span class="option-label">Ring</span>
+        <span class="option-desc">Expanding circle</span>
+      </label>
+      <label class="option" data-value="none">
+        <input type="radio" name="visual" value="none">
+        <span class="option-label">None</span>
+        <span class="option-desc">Sound only</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Parameters</div>
+
+    <div class="slider-row">
+      <div class="slider-info">
+        <span class="slider-label">Duration</span>
+        <span class="slider-sublabel">Sound length in ms</span>
+      </div>
+      <div class="slider-control">
+        <input type="range" class="slider" id="duration" min="20" max="500" value="120">
+        <span class="slider-value" id="duration-value">120</span>
+      </div>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-info">
+        <span class="slider-label">Volume</span>
+        <span class="slider-sublabel">Output level</span>
+      </div>
+      <div class="slider-control">
+        <input type="range" class="slider" id="volume" min="0" max="100" value="30">
+        <span class="slider-value" id="volume-value">30</span>
+      </div>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-info">
+        <span class="slider-label">Particles</span>
+        <span class="slider-sublabel">Visual density</span>
+      </div>
+      <div class="slider-control">
+        <input type="range" class="slider" id="particles" min="4" max="48" value="16">
+        <span class="slider-value" id="particles-value">16</span>
+      </div>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-info">
+        <span class="slider-label">Spread</span>
+        <span class="slider-sublabel">Particle distance</span>
+      </div>
+      <div class="slider-control">
+        <input type="range" class="slider" id="spread" min="20" max="200" value="60">
+        <span class="slider-value" id="spread-value">60</span>
+      </div>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-info">
+        <span class="slider-label">Nudge</span>
+        <span class="slider-sublabel">Screen displacement</span>
+      </div>
+      <div class="slider-control">
+        <input type="range" class="slider" id="nudge" min="0" max="8" value="2">
+        <span class="slider-value" id="nudge-value">2</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="toggle-row">
+      <div class="toggle-info">
+        <span class="toggle-label">Fade element</span>
+        <span class="toggle-sublabel">Reduce opacity after trigger</span>
+      </div>
+      <div class="toggle active" id="toggle-fade" data-setting="fadeEnabled"></div>
+    </div>
+
+    <div class="toggle-row">
+      <div class="toggle-info">
+        <span class="toggle-label">Auto-report</span>
+        <span class="toggle-sublabel">Open report dialog</span>
+      </div>
+      <div class="toggle active" id="toggle-report" data-setting="reportEnabled"></div>
+    </div>
+
+    <div class="toggle-row">
+      <div class="toggle-info">
+        <span class="toggle-label">Auto-block</span>
+        <span class="toggle-sublabel">Block user after report</span>
+      </div>
+      <div class="toggle active" id="toggle-block" data-setting="blockEnabled"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Disliked Users</div>
+    <div class="dislike-info">
+      <span class="dislike-count"><span id="dislike-count">0</span> users</span>
+      <button class="clear-btn" id="clear-disliked">Clear all</button>
+    </div>
+    <div class="dislike-list" id="dislike-list"></div>
+  </div>
+
+  <div class="section">
+    <button class="test-btn" id="test-btn">Test</button>
+  </div>
+
+  <div class="footer">v2.1</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
