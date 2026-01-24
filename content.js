@@ -419,6 +419,7 @@
 
         overlay.addEventListener('click', (e) => {
           e.preventDefault();
+          e.stopPropagation();
           overlayRevealed = true;
           video.play();
           overlay.remove();
@@ -798,10 +799,6 @@
         cursor: pointer;
         z-index: 10;
         transition: opacity 0.3s ease-out;
-      }
-      .be-video-overlay.be-video-revealed {
-        opacity: 0;
-        pointer-events: none;
       }
       .be-video-icon {
         width: 56px;
