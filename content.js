@@ -18,6 +18,8 @@
     fadeEnabled: true,
     reportEnabled: true,
     blockEnabled: true,
+    hideSpaces: false,
+    hideTrends: false,
     dislikeStyle: 'blur' // blur, dim, grayscale
   };
 
@@ -45,6 +47,7 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'configUpdated') {
       config = { ...config, ...msg.config };
+      applySidebarFilters();
     }
     if (msg.type === 'dislikedUsersUpdated') {
       dislikedUsers = new Set(msg.users);
@@ -433,6 +436,60 @@
   }
 
   // ============================================
+  // SIDEBAR FILTERING
+  // ============================================
+
+  const HIDE_CLASS = 'be-hidden';
+
+  function getSidebar() {
+    return document.querySelector('[data-testid="sidebarColumn"]') ||
+      document.querySelector('aside[aria-label][role="complementary"]') ||
+      document.querySelector('aside[aria-label]');
+  }
+
+  function collectSidebarTargets(sidebar) {
+    const filters = [];
+    if (config.hideSpaces) filters.push('spaces');
+    if (config.hideTrends) filters.push('trends for you');
+
+    if (filters.length === 0) return new Set();
+
+    const targets = new Set();
+    const elements = sidebar.querySelectorAll('[aria-label], [role="heading"], h2, h3, span');
+
+    elements.forEach(element => {
+      const label = element.getAttribute('aria-label') || '';
+      const text = `${label} ${element.textContent || ''}`.toLowerCase();
+
+      if (filters.some(filter => text.includes(filter))) {
+        const container = element.closest('section') ||
+          element.closest('div[role="region"]') ||
+          element.closest('div');
+        if (container && sidebar.contains(container)) {
+          targets.add(container);
+        }
+      }
+    });
+
+    return targets;
+  }
+
+  function applySidebarFilters() {
+    const sidebar = getSidebar();
+    if (!sidebar) return;
+
+    const targets = collectSidebarTargets(sidebar);
+
+    sidebar.querySelectorAll(`.${HIDE_CLASS}`).forEach(element => {
+      if (!targets.has(element)) {
+        element.classList.remove(HIDE_CLASS);
+      }
+    });
+
+    targets.forEach(element => element.classList.add(HIDE_CLASS));
+  }
+
+  // ============================================
   // REPORT FUNCTIONALITY
   // ============================================
 
@@ -813,17 +870,23 @@
         text-transform: uppercase;
         opacity: 0.7;
       }
+
+      .be-hidden {
+        display: none !important;
+      }
     `;
     document.head.appendChild(style);
 
     processTweets();
     processVideos();
     processAds();
+    applySidebarFilters();
 
     const observer = new MutationObserver(() => {
       processTweets();
       processVideos();
       processAds();
+      applySidebarFilters();
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }

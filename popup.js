@@ -10,7 +10,9 @@ const DEFAULT_CONFIG = {
   nudge: 2,
   fadeEnabled: true,
   reportEnabled: true,
-  blockEnabled: true
+  blockEnabled: true,
+  hideSpaces: false,
+  hideTrends: false
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -218,6 +220,8 @@ function updateUI() {
   document.getElementById('toggle-fade').classList.toggle('active', config.fadeEnabled);
   document.getElementById('toggle-report').classList.toggle('active', config.reportEnabled);
   document.getElementById('toggle-block').classList.toggle('active', config.blockEnabled);
+  document.getElementById('toggle-spaces').classList.toggle('active', config.hideSpaces);
+  document.getElementById('toggle-trends').classList.toggle('active', config.hideTrends);
 }
 
 function setupListeners() {
