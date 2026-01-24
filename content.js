@@ -402,32 +402,45 @@
 
       container.style.position = 'relative';
 
-      // Create blur overlay
-      const overlay = document.createElement('div');
-      overlay.className = 'be-video-overlay';
-      overlay.innerHTML = `
-        <div class="be-video-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-            <polygon points="5,3 19,12 5,21" fill="currentColor"/>
-          </svg>
-        </div>
-        <span class="be-video-text">click to play</span>
-      `;
+      let overlayRevealed = false;
 
-      overlay.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        overlay.classList.add('be-video-revealed');
-        video.play();
-      });
+      const attachOverlay = () => {
+        if (container.querySelector('.be-video-overlay')) return null;
+        const overlay = document.createElement('div');
+        overlay.className = 'be-video-overlay';
+        overlay.innerHTML = `
+          <div class="be-video-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <polygon points="5,3 19,12 5,21" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="be-video-text">click to play</span>
+        `;
 
-      container.appendChild(overlay);
+        overlay.addEventListener('click', (e) => {
+          e.preventDefault();
+          overlayRevealed = true;
+          video.play();
+          overlay.remove();
+        });
+
+        container.appendChild(overlay);
+        return overlay;
+      };
+
+      attachOverlay();
 
       // Re-pause if video tries to autoplay
       video.addEventListener('play', () => {
-        if (!overlay.classList.contains('be-video-revealed')) {
+        if (!overlayRevealed) {
           video.pause();
         }
+      });
+
+      video.addEventListener('pause', () => {
+        if (video.ended) return;
+        overlayRevealed = false;
+        attachOverlay();
       });
     });
   }
