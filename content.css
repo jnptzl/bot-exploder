@@ -84,6 +84,7 @@
 .be-disliked::after,
 .be-ad::after {
   position: absolute;
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -142,6 +143,8 @@
 .be-video-overlay {
   position: absolute;
   inset: 0;
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(20px);
   display: flex;
@@ -150,8 +153,13 @@
   justify-content: center;
   gap: 8px;
   cursor: pointer;
-  z-index: 10;
+  z-index: 1000;
   transition: opacity 0.3s ease-out;
+}
+
+.be-video-overlay:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -4px;
 }
 
 .be-video-overlay.be-video-revealed {
@@ -178,11 +186,13 @@
 
 .be-video-text {
   color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.7;
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 /* ============================================

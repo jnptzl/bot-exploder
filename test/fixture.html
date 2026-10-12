@@ -36,7 +36,11 @@
           </div>
           <button data-testid="caret" aria-label="More">…</button>
           <div data-testid="tweetText"><span>${text}</span></div>
-          ${video ? '<div data-testid="videoComponent"><video src="" muted></video></div>' : ''}
+          ${video ? `
+            <div data-testid="videoPlayer">
+              <div data-testid="videoComponent"><video playsinline></video></div>
+              <button class="x-mute" aria-label="Mute">🔊</button>
+            </div>` : ''}
           <div role="group" aria-label="actions">
             <button data-testid="reply">r</button>
             <button data-testid="like">l</button>
@@ -52,6 +56,42 @@
     addTweet({ user: 'real_author', retweeter: 'friendly_rt', text: 'retweeted content' });
     addTweet({ user: 'advertiser', text: 'Buy stuff', ad: true });
     addTweet({ user: 'video_user', text: 'video', video: true });
+    addTweet({ user: 'video_two', text: 'another video', video: true });
+
+    // X's player, roughly: it remembers that you unmuted, keeps its own mute
+    // state (the button label follows it), and retries autoplay on a timer.
+    window.__xMuted = false;
+
+    function wireVideo(video) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 16;
+      const g = canvas.getContext('2d');
+      setInterval(() => { g.fillStyle = `hsl(${Math.random() * 360},50%,50%)`; g.fillRect(0, 0, 16, 16); }, 50);
+      video.srcObject = canvas.captureStream(10);
+      video.muted = window.__xMuted;
+    }
+
+    document.querySelectorAll('video').forEach(wireVideo);
+    setInterval(() => {
+      document.querySelectorAll('video').forEach(v => { if (v.paused) v.play().catch(() => {}); });
+    }, 300);
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.x-mute');
+      if (!btn) return;
+      window.__xMuted = !window.__xMuted;
+      btn.closest('[data-testid="videoPlayer"]').querySelector('video').muted = window.__xMuted;
+      btn.setAttribute('aria-label', window.__xMuted ? 'Unmute' : 'Mute');
+    });
+
+    // X re-mounts the <video> element when a post re-renders
+    window.swapVideo = (user) => {
+      const old = document.querySelector(`article[data-user="${user}"] video`);
+      const fresh = document.createElement('video');
+      fresh.playsInline = true;
+      wireVideo(fresh);
+      old.replaceWith(fresh);
+    };
 
     // Decoys in the timeline that a document-wide text search would hit
     document.getElementById('timeline').insertAdjacentHTML('beforeend', `

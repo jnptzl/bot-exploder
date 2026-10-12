@@ -25,6 +25,8 @@ Feed cleanup, both on by default and switchable from the popup:
 - **Hide ads**: blurs promoted posts
 - **Hold videos**: stops autoplay. Click to play
 
+Videos always start muted, even if X remembers that you unmuted the last one.
+
 ## Parameters
 
 | Setting | Range | Default |
@@ -62,4 +64,4 @@ npm run icons    # regenerate assets/icon*.png
 
 ---
 
-v2.2
+v2.2.1

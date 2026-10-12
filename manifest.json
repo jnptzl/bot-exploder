@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bot Exploder",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Minimal bot removal for Twitter/X",
   "permissions": ["storage"],
   "action": {

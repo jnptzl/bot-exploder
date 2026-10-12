@@ -29,7 +29,11 @@ async function main() {
     channel: 'chromium',
     headless: true,
     executablePath: process.env.CHROMIUM_PATH || undefined,
-    args: [`--disable-extensions-except=${ROOT}`, `--load-extension=${ROOT}`]
+    args: [
+      `--disable-extensions-except=${ROOT}`,
+      `--load-extension=${ROOT}`,
+      '--autoplay-policy=no-user-gesture-required'
+    ]
   });
 
   await context.route('https://x.com/**', route =>
@@ -46,12 +50,12 @@ async function main() {
 
   test('adds buttons to every tweet', async () => {
     await load();
-    assert.strictEqual(await page.locator('.be-btn-wrap').count(), 4);
+    assert.strictEqual(await page.locator('.be-btn-wrap').count(), 5);
   });
 
   test('re-adds buttons when React drops them', async () => {
     await page.evaluate(() => document.querySelector('.be-btn-wrap').remove());
-    await page.waitForFunction(() => document.querySelectorAll('.be-btn-wrap').length === 4);
+    await page.waitForFunction(() => document.querySelectorAll('.be-btn-wrap').length === 5);
   });
 
   test('new tweets get buttons', async () => {
@@ -64,8 +68,44 @@ async function main() {
     assert.ok(!await page.locator('article[data-user="bot_one"]').evaluate(e => e.classList.contains('be-ad')));
   });
 
-  test('holds videos behind an overlay', async () => {
-    await page.waitForSelector('article[data-user="video_user"] .be-video-overlay');
+  const video = (user) => `article[data-user="${user}"] video`;
+  const isPlaying = (sel) => page.$eval(sel, v => !v.paused);
+
+  test('holds videos behind an overlay, despite autoplay retries', async () => {
+    await page.waitForSelector('article[data-user="video_user"] [data-testid="videoPlayer"] > .be-video-overlay');
+    await page.waitForTimeout(1000);
+    assert.ok(!await isPlaying(video('video_user')));
+  });
+
+  test('overlay label sets its own font instead of inheriting the player', async () => {
+    const font = await page.$eval('.be-video-text', el => getComputedStyle(el).fontFamily);
+    assert.match(font, /^TwitterChirp, -apple-system/);
+  });
+
+  test('click to play starts muted, in sync with the player', async () => {
+    assert.strictEqual(await page.evaluate(() => window.__xMuted), false);
+    await page.click('article[data-user="video_user"] .be-video-overlay');
+    await page.waitForFunction(sel => !document.querySelector(sel).paused, video('video_user'));
+    assert.ok(await page.$eval(video('video_user'), v => v.muted));
+    assert.strictEqual(await page.getAttribute('article[data-user="video_user"] .x-mute', 'aria-label'), 'Unmute');
+
+    // One click on the player's own button unmutes
+    await page.click('article[data-user="video_user"] .x-mute');
+    assert.ok(!await page.$eval(video('video_user'), v => v.muted));
+  });
+
+  test('a revealed post stays revealed when X swaps the <video>', async () => {
+    await page.evaluate(() => swapVideo('video_user'));
+    await page.waitForFunction(sel => !document.querySelector(sel).paused, video('video_user'));
+    await page.waitForTimeout(800);
+    assert.ok(await isPlaying(video('video_user')));
+    assert.strictEqual(await page.locator('article[data-user="video_user"] .be-video-overlay:not(.be-video-revealed)').count(), 0);
+  });
+
+  test('a <video> swapped in under a held overlay stays paused', async () => {
+    await page.evaluate(() => swapVideo('video_two'));
+    await page.waitForTimeout(1000);
+    assert.ok(!await isPlaying(video('video_two')));
   });
 
   test('dislike targets the author, not the retweeter', async () => {

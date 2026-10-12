@@ -202,59 +202,127 @@
   // ============================================
 
   const watchedVideos = new WeakSet();
-  const revealedVideos = new WeakSet();
+  const startedVideos = new WeakSet();
+  // Remembered per post, not per <video>: X swaps the element when playback
+  // starts or the post re-renders, and the new one must stay revealed.
+  const revealedPosts = new Set();
+  const revealedPlayers = new WeakSet(); // fallback when a post has no status link
+
+  function postKey(video) {
+    const tweet = video.closest(TWEET);
+    if (!tweet) return null;
+    const link = tweet.querySelector('a[href*="/status/"] time')?.closest('a');
+    const match = link?.getAttribute('href').match(/\/status\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
+  function isRevealed(video) {
+    const key = postKey(video);
+    return (!!key && revealedPosts.has(key)) || revealedPlayers.has(playerOf(video));
+  }
+
+  // Cover the whole player, controls included, so X's own play button
+  // can't start a held video.
+  function playerOf(video) {
+    return video.closest('[data-testid="videoPlayer"]') ||
+           video.closest('[data-testid="videoComponent"]') ||
+           video.parentElement;
+  }
+
+  // Mute through X's own button when it's there, so its speaker icon stays
+  // in sync; otherwise it takes two clicks to unmute.
+  function muteAtStart(video) {
+    if (video.muted) return;
+    const player = playerOf(video);
+    const button = player && [...player.querySelectorAll('button, [role="button"]')]
+      .find(b => /^mute$/i.test(b.getAttribute('aria-label') || ''));
+    if (button) button.click();
+    if (!video.muted) video.muted = true;
+  }
+
+  function watchVideo(video) {
+    if (watchedVideos.has(video)) return;
+    watchedVideos.add(video);
+
+    video.addEventListener('play', () => {
+      // X restarts playback as videos scroll into view
+      if (config.holdVideos && !isRevealed(video)) {
+        video.pause();
+        return;
+      }
+      // Every video starts muted, even if X remembers you unmuted the last one
+      if (!startedVideos.has(video)) {
+        startedVideos.add(video);
+        muteAtStart(video);
+      }
+    });
+  }
 
   function processVideos() {
+    const videos = document.querySelectorAll(`${TWEET} video`);
+    videos.forEach(watchVideo);
+
     if (!config.holdVideos) {
       document.querySelectorAll('.be-video-overlay').forEach(o => o.remove());
       return;
     }
-    document.querySelectorAll(`${TWEET} video`).forEach(holdVideo);
+    videos.forEach(holdVideo);
   }
 
   function holdVideo(video) {
-    if (revealedVideos.has(video)) return;
+    const player = playerOf(video);
+    if (!player) return;
+    const overlay = player.querySelector('.be-video-overlay');
 
-    const container = video.closest('[data-testid="videoComponent"]') ||
-                      video.closest('[data-testid="videoPlayer"]') ||
-                      video.parentElement;
-    if (!container || container.querySelector('.be-video-overlay')) return;
-
-    video.pause();
-    video.autoplay = false;
-
-    if (getComputedStyle(container).position === 'static') {
-      container.style.position = 'relative';
+    if (isRevealed(video)) {
+      overlay?.classList.add('be-video-revealed');
+      return;
     }
 
-    const overlay = document.createElement('div');
-    overlay.className = 'be-video-overlay';
-    overlay.innerHTML = `
+    // Also catches a fresh <video> swapped in under an existing overlay
+    if (!video.paused) video.pause();
+    video.autoplay = false;
+    if (overlay) return;
+
+    if (getComputedStyle(player).position === 'static') {
+      player.style.position = 'relative';
+    }
+
+    const el = document.createElement('div');
+    el.className = 'be-video-overlay';
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-label', 'Play video');
+    el.tabIndex = 0;
+    el.innerHTML = `
       <div class="be-video-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <polygon points="5,3 19,12 5,21" fill="currentColor"/>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <polygon points="7,4 20,12 7,20" fill="currentColor"/>
         </svg>
       </div>
-      <span class="be-video-text">click to play</span>
+      <span class="be-video-text">Click to play</span>
     `;
 
-    overlay.addEventListener('click', (e) => {
+    const reveal = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      revealedVideos.add(video);
-      overlay.classList.add('be-video-revealed');
-      video.play().catch(() => {});
+      const key = postKey(video);
+      if (key) revealedPosts.add(key);
+      revealedPlayers.add(player);
+      el.classList.add('be-video-revealed');
+
+      const current = player.querySelector('video') || video;
+      startedVideos.add(current);
+      watchVideo(current);
+      muteAtStart(current);
+      current.play().catch(() => {});
+    };
+
+    el.addEventListener('click', reveal);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') reveal(e);
     });
 
-    container.appendChild(overlay);
-
-    // X restarts playback as videos scroll into view
-    if (!watchedVideos.has(video)) {
-      watchedVideos.add(video);
-      video.addEventListener('play', () => {
-        if (config.holdVideos && !revealedVideos.has(video)) video.pause();
-      });
-    }
+    player.appendChild(el);
   }
 
   // ============================================
