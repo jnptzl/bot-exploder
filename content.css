@@ -25,10 +25,27 @@
   transition: background 0.15s, color 0.15s, opacity 0.15s;
 }
 
-.be-btn svg,
-.be-dislike-btn svg {
+/* Icons are pre-colored background images, one per state. Inline SVGs
+   or CSS masks (which could follow currentColor) cost noticeably more to
+   paint on every post while scrolling. */
+.be-btn::before,
+.be-dislike-btn::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: var(--be-icon) center / 18px 18px no-repeat;
   transition: transform 0.15s;
 }
+
+.be-btn { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Ccircle cx='9' cy='9' r='7' stroke='%23536471' stroke-width='1'/%3E%3Ccircle cx='9' cy='9' r='2' fill='%23536471'/%3E%3C/svg%3E"); }
+.be-dark .be-btn { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Ccircle cx='9' cy='9' r='7' stroke='%2371767b' stroke-width='1'/%3E%3Ccircle cx='9' cy='9' r='2' fill='%2371767b'/%3E%3C/svg%3E"); }
+.be-btn:hover:not(:disabled) { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Ccircle cx='9' cy='9' r='7' stroke='%23fff' stroke-width='1'/%3E%3Ccircle cx='9' cy='9' r='2' fill='%23fff'/%3E%3C/svg%3E"); }
+
+.be-dislike-btn { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M9 3v10M5 9l4 6 4-6' stroke='%23536471' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.be-dark .be-dislike-btn { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M9 3v10M5 9l4 6 4-6' stroke='%2371767b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.be-dislike-btn.active { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M9 3v10M5 9l4 6 4-6' stroke='%23eab308' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.be-dislike-btn:hover { --be-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M9 3v10M5 9l4 6 4-6' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 
 .be-btn:focus-visible,
 .be-dislike-btn:focus-visible {
@@ -53,8 +70,8 @@
   color: #000;
 }
 
-.be-btn:hover:not(:disabled) svg,
-.be-dislike-btn:hover svg {
+.be-btn:hover:not(:disabled)::before,
+.be-dislike-btn:hover::before {
   transform: scale(1.1);
 }
 
@@ -193,6 +210,14 @@
   text-transform: uppercase;
   white-space: nowrap;
   opacity: 0.8;
+}
+
+/* ============================================
+   SIDEBAR
+   ============================================ */
+
+[data-be-hidden] {
+  display: none !important;
 }
 
 /* ============================================

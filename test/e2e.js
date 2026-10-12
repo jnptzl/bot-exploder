@@ -174,6 +174,39 @@ async function main() {
     await popup.close();
   });
 
+  test('sidebar modules hide and show from the popup', async () => {
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${extensionId(ROOT)}/popup.html`);
+    await popup.waitForSelector('#toggle-live');
+    const visible = (text) => page.getByRole('heading', { name: text }).isVisible();
+
+    // Only "Live on X" has loaded so far
+    await page.reload();
+    await page.waitForSelector('.be-btn-wrap');
+    await popup.click('#toggle-live');
+    await page.waitForFunction(() => !document.querySelector('h2').checkVisibility());
+    assert.ok(await page.locator('[data-testid="SearchBox_Search_Input"]').isVisible(), 'search box hidden');
+
+    // Modules that load later must not get caught in the hidden box
+    await page.evaluate(() => addSidebarModules());
+    await page.waitForFunction(() => [...document.querySelectorAll('h2')].filter(h => h.checkVisibility()).length === 2);
+    assert.ok(await visible('What’s happening'));
+    assert.ok(await visible('Who to follow'));
+    assert.ok(!await visible('Live on X'));
+
+    await popup.click('#toggle-trends');
+    await popup.click('#toggle-follow');
+    await page.waitForFunction(() => ![...document.querySelectorAll('h2')].some(h => h.checkVisibility()));
+    assert.ok(await page.locator('[data-testid="SearchBox_Search_Input"]').isVisible(), 'search box hidden');
+
+    // All back on
+    await popup.click('#toggle-live');
+    await popup.click('#toggle-trends');
+    await popup.click('#toggle-follow');
+    await page.waitForFunction(() => [...document.querySelectorAll('h2')].every(h => h.checkVisibility()));
+    await popup.close();
+  });
+
   test('no page errors', async () => {
     assert.deepStrictEqual(errors, []);
   });

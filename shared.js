@@ -12,7 +12,10 @@ const BE_DEFAULT_CONFIG = {
   reportEnabled: true,
   blockEnabled: true,
   hideAds: true,
-  holdVideos: true
+  holdVideos: true,
+  hideLive: false,
+  hideTrends: false,
+  hideWhoToFollow: false
 };
 
 // ============================================

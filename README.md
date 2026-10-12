@@ -27,6 +27,12 @@ Feed cleanup, both on by default and switchable from the popup:
 
 Videos always start muted, even if X remembers that you unmuted the last one.
 
+Sidebar, all off by default:
+
+- **Hide Live on X**: Spaces and livestreams
+- **Hide What's happening**: trends and news
+- **Hide Who to follow**: account suggestions
+
 ## Parameters
 
 | Setting | Range | Default |
@@ -54,14 +60,22 @@ The nudge and particle animations are skipped when the OS asks for reduced motio
 - Settings sync across your Chrome profile. The disliked list is stored on this
   device only.
 
+## Performance
+
+No background process: the extension only runs while an X tab is open.
+In `npm run perf` (60 posts, one recycled every frame for 5s) it adds about
+120 ms of JavaScript and roughly 1 MB of memory, and the memory stays flat
+over time. Only posts that changed get re-checked.
+
 ## Development
 
 ```sh
 npm install npm install      # Playwright, for testsnpm install      # Playwright, for tests npx playwright install chromium
 npm test         # loads the extension into Chromium against a mock X page
+npm run perf     # cost on a busy page, with vs without the extension
 npm run icons    # regenerate assets/icon*.png
 ```
 
 ---
 
-v2.2.1
+v2.3.0

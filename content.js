@@ -19,7 +19,7 @@
   BEStorage.onChange(({ config: newConfig, dislikedUsers: users }) => {
     if (newConfig) config = newConfig;
     if (users) dislikedUsers = new Set(users);
-    scan();
+    requestFullScan();
   });
 
   function sleep(ms) {
@@ -156,7 +156,7 @@
     } else {
       dislikedUsers.add(username);
     }
-    scan();
+    requestFullScan();
     await BEStorage.setDisliked(dislikedUsers);
     return dislikedUsers.has(username);
   }
@@ -166,7 +166,7 @@
     tweet.classList.toggle('be-disliked', disliked);
 
     const btn = tweet.querySelector('.be-dislike-btn');
-    if (btn) {
+    if (btn && btn.getAttribute('aria-pressed') !== String(disliked)) {
       btn.classList.toggle('active', disliked);
       btn.setAttribute('aria-pressed', String(disliked));
       btn.title = disliked ? 'Remove from disliked' : 'Dislike this user';
@@ -258,15 +258,11 @@
     });
   }
 
-  function processVideos() {
-    const videos = document.querySelectorAll(`${TWEET} video`);
-    videos.forEach(watchVideo);
-
-    if (!config.holdVideos) {
-      document.querySelectorAll('.be-video-overlay').forEach(o => o.remove());
-      return;
+  function processVideos(tweet) {
+    for (const video of tweet.getElementsByTagName('video')) {
+      watchVideo(video);
+      if (config.holdVideos) holdVideo(video);
     }
-    videos.forEach(holdVideo);
   }
 
   function holdVideo(video) {
@@ -436,19 +432,6 @@
   // TWEET BUTTONS
   // ============================================
 
-  const DISLIKE_ICON = `
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M9 3v10M5 9l4 6 4-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `;
-
-  const REMOVE_ICON = `
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1"/>
-      <circle cx="9" cy="9" r="2" fill="currentColor"/>
-    </svg>
-  `;
-
   async function onDislikeClick(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -494,11 +477,12 @@
     tweet.style.display = 'none';
   }
 
-  function makeButton(className, icon, label, onClick) {
+  // Icons are CSS masks (see content.css): inline SVGs in every post
+  // measurably slowed X's paint while scrolling
+  function makeButton(className, label, onClick) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = className;
-    btn.innerHTML = icon;
     btn.title = label;
     btn.setAttribute('aria-label', label);
     btn.addEventListener('click', onClick);
@@ -506,15 +490,15 @@
   }
 
   function ensureButtons(tweet) {
-    const actionBar = tweet.querySelector('[role="group"]:has([data-testid="reply"])') ||
+    const actionBar = tweet.querySelector('[data-testid="reply"]')?.closest('[role="group"]') ||
                       tweet.querySelector('[role="group"]');
     // React re-renders can drop our wrapper, so check the DOM rather than a cache
     if (!actionBar || actionBar.querySelector('.be-btn-wrap')) return;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'be-btn-wrap';
-    wrapper.appendChild(makeButton('be-dislike-btn', DISLIKE_ICON, 'Dislike this user', onDislikeClick));
-    wrapper.appendChild(makeButton('be-btn', REMOVE_ICON, 'Remove', onRemoveClick));
+    wrapper.appendChild(makeButton('be-dislike-btn', 'Dislike this user', onDislikeClick));
+    wrapper.appendChild(makeButton('be-btn', 'Remove', onRemoveClick));
     actionBar.appendChild(wrapper);
   }
 
@@ -522,32 +506,152 @@
   // SCAN
   // ============================================
 
-  function scan() {
-    updateTheme();
-    document.querySelectorAll(TWEET).forEach(tweet => {
-      ensureButtons(tweet);
-      applyDislikeStyle(tweet);
-      processAd(tweet);
-    });
-    processVideos();
+  // ============================================
+  // SIDEBAR
+  // ============================================
+  // Modules are found by their heading, then hidden at the largest ancestor
+  // that holds no other module. X loads modules lazily, so a box hidden
+  // early can later turn out to contain more; it's re-checked every pass.
+
+  const SIDEBAR_MODULES = [
+    { setting: 'hideLive', heading: /^live on /i },
+    { setting: 'hideTrends', heading: /^(what[’']s happening|trends for you|trending now)$/i },
+    { setting: 'hideWhoToFollow', heading: /^(who to follow|you might like)$/i }
+  ];
+
+  const HEADING = 'h2, [role="heading"]';
+  const SEARCH = '[role="search"], [data-testid="SearchBox_Search_Input"]';
+
+  function moduleFor(heading) {
+    const text = normalize(heading.textContent);
+    return SIDEBAR_MODULES.find(m => m.heading.test(text));
   }
 
-  // X mutates the DOM constantly; batch scans to at most one per frame
+  function moduleBox(heading, sidebar) {
+    let box = heading;
+    while (box.parentElement && box.parentElement !== sidebar) {
+      const parent = box.parentElement;
+      if (parent.querySelectorAll(HEADING).length > 1 || parent.querySelector(SEARCH)) break;
+      box = parent;
+    }
+    return box === heading ? null : box;
+  }
+
+  function processSidebar() {
+    const sidebar = document.querySelector('[data-testid="sidebarColumn"]');
+    if (!sidebar) return;
+
+    for (const box of sidebar.querySelectorAll('[data-be-hidden]')) {
+      const headings = box.querySelectorAll(HEADING);
+      const module = headings.length === 1 && moduleFor(headings[0]);
+      if (!module || !config[module.setting] || box.querySelector(SEARCH)) {
+        box.removeAttribute('data-be-hidden');
+      }
+    }
+
+    for (const heading of sidebar.querySelectorAll(HEADING)) {
+      const module = moduleFor(heading);
+      if (!module || !config[module.setting] || heading.closest('[data-be-hidden]')) continue;
+      moduleBox(heading, sidebar)?.setAttribute('data-be-hidden', module.setting);
+    }
+  }
+
+  // ============================================
+  // SCAN
+  // ============================================
+  // X mutates the DOM constantly. Rather than re-checking every post on
+  // every change, collect the posts that changed and process those once
+  // per frame. Settings changes trigger a full pass.
+
+  const dirtyTweets = new Set();
+  let fullScanPending = true;
   let scanPending = false;
+  let lastThemeCheck = 0;
+
+  function processTweet(tweet) {
+    ensureButtons(tweet);
+    applyDislikeStyle(tweet);
+    processAd(tweet);
+    processVideos(tweet);
+  }
+
+  function scan() {
+    scanPending = false;
+    const now = performance.now();
+
+    if (fullScanPending) {
+      fullScanPending = false;
+      dirtyTweets.clear();
+      if (!config.holdVideos) {
+        document.querySelectorAll('.be-video-overlay').forEach(o => o.remove());
+      }
+      document.querySelectorAll(TWEET).forEach(processTweet);
+    } else {
+      for (const tweet of dirtyTweets) {
+        if (tweet.isConnected) processTweet(tweet);
+      }
+      dirtyTweets.clear();
+    }
+
+    processSidebar();
+
+    // getComputedStyle forces a style recalc; X's theme rarely changes
+    if (now - lastThemeCheck > 1000) {
+      lastThemeCheck = now;
+      updateTheme();
+    }
+  }
 
   function scheduleScan() {
     if (scanPending) return;
     scanPending = true;
-    requestAnimationFrame(() => {
-      scanPending = false;
-      scan();
-    });
+    requestAnimationFrame(scan);
+  }
+
+  function requestFullScan() {
+    fullScanPending = true;
+    scheduleScan();
+  }
+
+  // Our own buttons, overlays and particles
+  function isOurs(node) {
+    return node.nodeType === 1 && typeof node.className === 'string' && node.className.startsWith('be-');
+  }
+
+  function onlyOurs(nodes) {
+    for (const node of nodes) if (!isOurs(node)) return false;
+    return true;
+  }
+
+  function onMutations(records) {
+    let relevant = false;
+
+    for (const record of records) {
+      // Skip our own insertions, but not removals: X dropping our buttons
+      // during a re-render is exactly what needs noticing
+      if (!record.removedNodes.length && onlyOurs(record.addedNodes)) continue;
+      relevant = true;
+
+      const tweet = record.target.closest?.(TWEET);
+      if (tweet) dirtyTweets.add(tweet);
+
+      for (const node of record.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.matches(TWEET)) {
+          dirtyTweets.add(node);
+        } else if (node.firstElementChild) {
+          for (const t of node.querySelectorAll(TWEET)) dirtyTweets.add(t);
+        }
+      }
+    }
+
+    if (relevant) scheduleScan();
   }
 
   async function init() {
     await loadState();
     scan();
-    new MutationObserver(scheduleScan).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(onMutations).observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') {

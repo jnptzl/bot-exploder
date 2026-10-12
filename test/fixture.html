@@ -17,6 +17,12 @@
     <div id="timeline"></div>
     <div class="spacer"></div>
   </div>
+  <div data-testid="sidebarColumn" style="position: absolute; top: 0; right: 0; width: 300px;">
+    <div><form role="search"><input data-testid="SearchBox_Search_Input"></form></div>
+    <div id="modules">
+      <div class="module"><div><h2 role="heading"><span>Live on X</span></h2></div><div>Bits + Bips</div></div>
+    </div>
+  </div>
   <div id="layers"></div>
 
   <script>
@@ -47,6 +53,15 @@
           </div>
         </article>`;
     }
+
+    // X loads sidebar modules lazily
+    window.addSidebarModules = () => {
+      document.getElementById('modules').insertAdjacentHTML('beforeend', `
+        <div class="module"><section><div><h2 role="heading"><span>What’s happening</span></h2></div>
+          <div data-testid="trend">Trending in Argentina</div></section></div>
+        <div class="module"><aside aria-label="Who to follow"><div><h2 role="heading"><span>Who to follow</span></h2></div>
+          <div data-testid="UserCell">@habit_py</div></aside></div>`);
+    };
 
     window.addTweet = (t) => {
       document.getElementById('timeline').insertAdjacentHTML('beforeend', tweetHTML(t));
