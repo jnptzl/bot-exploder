@@ -1,258 +1,91 @@
-// Bot Exploder - Minimal Configuration
+// Bot Exploder - Popup Configuration
+// Depends on shared.js (BE_DEFAULT_CONFIG, BEStorage, BEAudio)
 
-const DEFAULT_CONFIG = {
-  soundType: 'white',
-  visualStyle: 'dots',
-  duration: 120,
-  volume: 30,
-  particles: 16,
-  spread: 60,
-  nudge: 2,
-  fadeEnabled: true,
-  reportEnabled: true,
-  blockEnabled: true
-};
-
-let config = { ...DEFAULT_CONFIG };
+let config = { ...BE_DEFAULT_CONFIG };
 let dislikedUsers = [];
-let audioCtx = null;
+
+const SLIDERS = ['duration', 'volume', 'particles', 'spread', 'nudge'];
 
 // ============================================
-// MINIMAL AUDIO SYSTEM
+// CONFIG
 // ============================================
 
-function getAudioContext() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  return audioCtx;
+// chrome.storage.sync allows ~120 writes/minute; dragging a slider fires
+// far more input events than that, so coalesce them.
+let saveTimer = null;
+
+function saveConfig() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushConfig, 250);
 }
 
-// White noise - all frequencies equal
-function playWhiteNoise(duration, volume) {
-  const ctx = getAudioContext();
-  const samples = ctx.sampleRate * (duration / 1000);
-  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < samples; i++) {
-    data[i] = Math.random() * 2 - 1;
-  }
-
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-  source.start();
+function flushConfig() {
+  if (saveTimer === null) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  BEStorage.setConfig(config);
 }
 
-// Brown noise - random walk, low frequency emphasis
-function playBrownNoise(duration, volume) {
-  const ctx = getAudioContext();
-  const samples = ctx.sampleRate * (duration / 1000);
-  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  let lastOut = 0;
-  for (let i = 0; i < samples; i++) {
-    const white = Math.random() * 2 - 1;
-    data[i] = (lastOut + (0.02 * white)) / 1.02;
-    lastOut = data[i];
-    data[i] *= 3.5; // Compensate for volume loss
-  }
-
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-  source.start();
-}
-
-// Pink noise - 1/f spectrum
-function playPinkNoise(duration, volume) {
-  const ctx = getAudioContext();
-  const samples = ctx.sampleRate * (duration / 1000);
-  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-  for (let i = 0; i < samples; i++) {
-    const white = Math.random() * 2 - 1;
-    b0 = 0.99886 * b0 + white * 0.0555179;
-    b1 = 0.99332 * b1 + white * 0.0750759;
-    b2 = 0.96900 * b2 + white * 0.1538520;
-    b3 = 0.86650 * b3 + white * 0.3104856;
-    b4 = 0.55000 * b4 + white * 0.5329522;
-    b5 = -0.7616 * b5 - white * 0.0168980;
-    data[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
-    data[i] *= 0.11;
-    b6 = white * 0.115926;
-  }
-
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-
-  source.connect(gain);
-  gain.connect(ctx.destination);
-  source.start();
-}
-
-// Blip - short sine click
-function playBlip(duration, volume) {
-  const ctx = getAudioContext();
-  const now = ctx.currentTime;
-  const dur = Math.min(duration, 80) / 1000;
-
-  const osc = ctx.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(800, now);
-  osc.frequency.exponentialRampToValueAtTime(200, now + dur);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + dur);
-}
-
-function playSound() {
-  const duration = config.duration;
-  const volume = config.volume / 100;
-
-  switch (config.soundType) {
-    case 'white':
-      playWhiteNoise(duration, volume);
-      break;
-    case 'brown':
-      playBrownNoise(duration, volume);
-      break;
-    case 'pink':
-      playPinkNoise(duration, volume);
-      break;
-    case 'blip':
-      playBlip(duration, volume);
-      break;
-  }
-}
-
-// ============================================
-// CONFIG MANAGEMENT
-// ============================================
-
-async function loadConfig() {
-  try {
-    const result = await chrome.storage.sync.get(['botExploderConfig', 'dislikedUsers']);
-    if (result.botExploderConfig) {
-      config = { ...DEFAULT_CONFIG, ...result.botExploderConfig };
-    }
-    if (result.dislikedUsers) {
-      dislikedUsers = result.dislikedUsers;
-    }
-  } catch (e) {
-    console.log('Using default config');
-  }
-  updateUI();
-  updateDislikedList();
-}
-
-async function saveConfig() {
-  try {
-    await chrome.storage.sync.set({ botExploderConfig: config });
-    const tabs = await chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] });
-    tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, { type: 'configUpdated', config }).catch(() => {});
-    });
-  } catch (e) {
-    console.log('Could not save config');
-  }
-}
+// The popup closes the moment focus leaves it; don't drop a pending save
+window.addEventListener('pagehide', flushConfig);
 
 function updateUI() {
-  // Sound options
-  document.querySelectorAll('#sound-options .option').forEach(opt => {
-    opt.classList.toggle('selected', opt.dataset.value === config.soundType);
+  document.querySelectorAll('#sound-options input').forEach(input => {
+    input.checked = input.value === config.soundType;
+  });
+  document.querySelectorAll('#visual-options input').forEach(input => {
+    input.checked = input.value === config.visualStyle;
+  });
+  document.querySelectorAll('.option').forEach(opt => {
+    opt.classList.toggle('selected', opt.querySelector('input').checked);
   });
 
-  // Visual options
-  document.querySelectorAll('#visual-options .option').forEach(opt => {
-    opt.classList.toggle('selected', opt.dataset.value === config.visualStyle);
+  SLIDERS.forEach(id => {
+    document.getElementById(id).value = config[id];
+    document.getElementById(id + '-value').textContent = config[id];
   });
 
-  // Sliders
-  document.getElementById('duration').value = config.duration;
-  document.getElementById('duration-value').textContent = config.duration;
-
-  document.getElementById('volume').value = config.volume;
-  document.getElementById('volume-value').textContent = config.volume;
-
-  document.getElementById('particles').value = config.particles;
-  document.getElementById('particles-value').textContent = config.particles;
-
-  document.getElementById('spread').value = config.spread;
-  document.getElementById('spread-value').textContent = config.spread;
-
-  document.getElementById('nudge').value = config.nudge;
-  document.getElementById('nudge-value').textContent = config.nudge;
-
-  // Toggles
-  document.getElementById('toggle-fade').classList.toggle('active', config.fadeEnabled);
-  document.getElementById('toggle-report').classList.toggle('active', config.reportEnabled);
-  document.getElementById('toggle-block').classList.toggle('active', config.blockEnabled);
+  document.querySelectorAll('.toggle').forEach(toggle => {
+    const on = !!config[toggle.dataset.setting];
+    toggle.classList.toggle('active', on);
+    toggle.setAttribute('aria-checked', String(on));
+  });
 }
 
 function setupListeners() {
-  // Sound options
-  document.querySelectorAll('#sound-options .option').forEach(opt => {
-    opt.addEventListener('click', () => {
-      config.soundType = opt.dataset.value;
+  document.querySelectorAll('#sound-options input').forEach(input => {
+    input.addEventListener('change', () => {
+      config.soundType = input.value;
+      saveConfig();
+      updateUI();
+      BEAudio.play(config);
+    });
+  });
+
+  document.querySelectorAll('#visual-options input').forEach(input => {
+    input.addEventListener('change', () => {
+      config.visualStyle = input.value;
       saveConfig();
       updateUI();
     });
   });
 
-  // Visual options
-  document.querySelectorAll('#visual-options .option').forEach(opt => {
-    opt.addEventListener('click', () => {
-      config.visualStyle = opt.dataset.value;
-      saveConfig();
-      updateUI();
-    });
-  });
-
-  // Sliders
-  const sliders = ['duration', 'volume', 'particles', 'spread', 'nudge'];
-  sliders.forEach(id => {
+  SLIDERS.forEach(id => {
     const slider = document.getElementById(id);
-    const valueEl = document.getElementById(id + '-value');
+    const row = slider.closest('.slider-row');
+    slider.setAttribute('aria-label', row.querySelector('.slider-label').textContent);
+
     slider.addEventListener('input', () => {
-      config[id] = parseInt(slider.value);
-      valueEl.textContent = slider.value;
+      config[id] = parseInt(slider.value, 10);
+      document.getElementById(id + '-value').textContent = slider.value;
       saveConfig();
     });
   });
 
-  // Toggles
   document.querySelectorAll('.toggle').forEach(toggle => {
+    const row = toggle.closest('.toggle-row');
+    toggle.setAttribute('aria-label', row.querySelector('.toggle-label').textContent);
+
     toggle.addEventListener('click', () => {
       const setting = toggle.dataset.setting;
       config[setting] = !config[setting];
@@ -261,29 +94,26 @@ function setupListeners() {
     });
   });
 
-  // Test button
   document.getElementById('test-btn').addEventListener('click', testEffect);
+  document.getElementById('clear-disliked').addEventListener('click', clearAllDisliked);
 }
 
 function testEffect() {
-  playSound();
+  BEAudio.play(config);
 
-  // Small nudge on popup
-  if (config.nudge > 0) {
-    const nudgeAmount = config.nudge;
-    document.body.style.transition = 'transform 0.1s ease-out';
-    document.body.style.transform = `translateX(${nudgeAmount}px)`;
-    setTimeout(() => {
-      document.body.style.transform = `translateX(-${nudgeAmount * 0.5}px)`;
-      setTimeout(() => {
-        document.body.style.transform = 'translateX(0)';
-      }, 50);
-    }, 50);
+  if (config.nudge > 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const amount = config.nudge;
+    document.body.animate([
+      { transform: 'translateX(0)' },
+      { transform: `translateX(${amount}px)`, offset: 0.33 },
+      { transform: `translateX(${-amount * 0.5}px)`, offset: 0.66 },
+      { transform: 'translateX(0)' }
+    ], { duration: 150, easing: 'ease-out' });
   }
 }
 
 // ============================================
-// DISLIKED USERS MANAGEMENT
+// DISLIKED USERS
 // ============================================
 
 function updateDislikedList() {
@@ -291,52 +121,72 @@ function updateDislikedList() {
   const listEl = document.getElementById('dislike-list');
 
   countEl.textContent = dislikedUsers.length;
+  document.getElementById('clear-disliked').disabled = dislikedUsers.length === 0;
+  listEl.replaceChildren();
 
   if (dislikedUsers.length === 0) {
-    listEl.innerHTML = '<span class="dislike-empty">None</span>';
+    const empty = document.createElement('span');
+    empty.className = 'dislike-empty';
+    empty.textContent = 'None';
+    listEl.appendChild(empty);
     return;
   }
 
-  listEl.innerHTML = dislikedUsers.map(user => `
-    <span class="dislike-tag">
-      @${user}
-      <button data-user="${user}" title="Remove">×</button>
-    </span>
-  `).join('');
+  [...dislikedUsers].sort().forEach(user => {
+    const tag = document.createElement('span');
+    tag.className = 'dislike-tag';
 
-  // Add remove listeners
-  listEl.querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('click', () => removeDislikedUser(btn.dataset.user));
+    const link = document.createElement('a');
+    link.href = `https://x.com/${encodeURIComponent(user)}`;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = `@${user}`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.title = `Remove @${user}`;
+    remove.setAttribute('aria-label', `Remove @${user}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => removeDislikedUser(user));
+
+    tag.append(link, remove);
+    listEl.appendChild(tag);
   });
 }
 
 async function removeDislikedUser(username) {
   dislikedUsers = dislikedUsers.filter(u => u !== username);
-  await chrome.storage.sync.set({ dislikedUsers });
   updateDislikedList();
-
-  // Notify content scripts
-  const tabs = await chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] });
-  tabs.forEach(tab => {
-    chrome.tabs.sendMessage(tab.id, { type: 'dislikedUsersUpdated', users: dislikedUsers }).catch(() => {});
-  });
+  await BEStorage.setDisliked(dislikedUsers);
 }
 
 async function clearAllDisliked() {
+  if (!confirm(`Clear all ${dislikedUsers.length} disliked users?`)) return;
   dislikedUsers = [];
-  await chrome.storage.sync.set({ dislikedUsers: [] });
+  updateDislikedList();
+  await BEStorage.setDisliked(dislikedUsers);
+}
+
+// ============================================
+// INIT
+// ============================================
+
+async function init() {
+  document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
+  setupListeners();
+
+  config = await BEStorage.getConfig();
+  dislikedUsers = await BEStorage.getDisliked();
+  updateUI();
   updateDislikedList();
 
-  // Notify content scripts
-  const tabs = await chrome.tabs.query({ url: ['*://twitter.com/*', '*://x.com/*'] });
-  tabs.forEach(tab => {
-    chrome.tabs.sendMessage(tab.id, { type: 'dislikedUsersUpdated', users: [] }).catch(() => {});
+  // Dislikes added from a tab while the popup is open
+  BEStorage.onChange(({ dislikedUsers: users }) => {
+    if (users) {
+      dislikedUsers = users;
+      updateDislikedList();
+    }
   });
 }
 
-// Initialize
-loadConfig();
-setupListeners();
-
-// Clear disliked button
-document.getElementById('clear-disliked').addEventListener('click', clearAllDisliked);
+init();

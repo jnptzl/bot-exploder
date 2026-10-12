@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>X fixture</title>
+  <style>
+    body { margin: 0; background: #fff; font-family: sans-serif; }
+    [data-testid="primaryColumn"] { width: 600px; margin: 0 auto; }
+    article { border-bottom: 1px solid #eee; padding: 12px; min-height: 120px; }
+    #layers { position: fixed; top: 0; left: 0; width: 100%; z-index: 100; }
+    [role="dialog"], [role="menu"] { background: #fff; border: 1px solid #000; margin: 40px auto; width: 300px; padding: 8px; }
+    .spacer { height: 3000px; }
+  </style>
+</head>
+<body>
+  <div data-testid="primaryColumn">
+    <div id="timeline"></div>
+    <div class="spacer"></div>
+  </div>
+  <div id="layers"></div>
+
+  <script>
+    // Minimal mimic of X's DOM: tweets, caret menu, and a 3-step report dialog in #layers
+    window.__clicks = [];
+    const log = (what) => window.__clicks.push(what);
+
+    function tweetHTML({ user, text, retweeter, ad, video }) {
+      return `
+        <article data-testid="tweet" data-user="${user}">
+          ${retweeter ? `<a href="/${retweeter}"><span data-testid="socialContext">${retweeter} reposted</span></a>` : ''}
+          <a href="/${user}"><img alt=""></a>
+          <div data-testid="User-Name">
+            <a href="/${user}"><span>${user}</span></a>
+            <a href="/${user}/status/1"><span>1h</span></a>
+            ${ad ? '<span>Ad</span>' : ''}
+          </div>
+          <button data-testid="caret" aria-label="More">…</button>
+          <div data-testid="tweetText"><span>${text}</span></div>
+          ${video ? '<div data-testid="videoComponent"><video src="" muted></video></div>' : ''}
+          <div role="group" aria-label="actions">
+            <button data-testid="reply">r</button>
+            <button data-testid="like">l</button>
+          </div>
+        </article>`;
+    }
+
+    window.addTweet = (t) => {
+      document.getElementById('timeline').insertAdjacentHTML('beforeend', tweetHTML(t));
+    };
+
+    addTweet({ user: 'bot_one', text: 'Click Next then Done' });
+    addTweet({ user: 'real_author', retweeter: 'friendly_rt', text: 'retweeted content' });
+    addTweet({ user: 'advertiser', text: 'Buy stuff', ad: true });
+    addTweet({ user: 'video_user', text: 'video', video: true });
+
+    // Decoys in the timeline that a document-wide text search would hit
+    document.getElementById('timeline').insertAdjacentHTML('beforeend', `
+      <div role="button" onclick="__clicks.push('DECOY next')">Next</div>
+      <div role="button" onclick="__clicks.push('DECOY block')">Block</div>
+      <div role="button" onclick="__clicks.push('DECOY done')">Done</div>
+      <label onclick="__clicks.push('DECOY spam')">Spam</label>`);
+
+    const layers = document.getElementById('layers');
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { log('escape'); layers.innerHTML = ''; }
+    });
+
+    document.addEventListener('click', (e) => {
+      const caret = e.target.closest('[data-testid="caret"]');
+      if (caret) {
+        const user = caret.closest('article').dataset.user;
+        log('caret ' + user);
+        layers.innerHTML = `
+          <div role="menu">
+            <div role="menuitem">Not interested in this post</div>
+            <div role="menuitem" data-action="report" data-user="${user}">Report post</div>
+          </div>`;
+        return;
+      }
+
+      if (e.target.matches('input')) return; // label's synthetic click
+      const el = e.target.closest('#layers [role], #layers label, #layers button');
+      if (!el) return;
+      const text = el.textContent.replace(/\s+/g, ' ').trim();
+      log(text);
+
+      if (el.dataset.action === 'report') {
+        showStep1(el.dataset.user);
+      } else if (el.matches('label')) {
+        el.closest('[role="dialog"]').querySelector('[data-next]').setAttribute('aria-disabled', 'false');
+      } else if (el.dataset.next === '1') {
+        showStep2(el.dataset.user);
+      } else if (el.dataset.next === '2') {
+        showStep3(el.dataset.user);
+      } else if (el.dataset.block) {
+        layers.querySelector('[role="dialog"]').insertAdjacentHTML('beforeend',
+          `<div role="button" data-testid="confirmationSheetConfirm">Block</div>`);
+      } else if (el.dataset.testid === 'confirmationSheetConfirm') {
+        window.__blocked = el.closest('[role="dialog"]').dataset.user;
+        el.remove();
+      } else if (el.dataset.done) {
+        window.__reported = (window.__reported || []).concat(el.dataset.user);
+        layers.innerHTML = '';
+      }
+    });
+
+    function showStep1(user) {
+      layers.innerHTML = `
+        <div role="dialog" data-user="${user}">
+          <label><input type="radio" name="c"><span>Hate</span><span>Slurs, racist imagery</span></label>
+          <label><input type="radio" name="c"><span>Spam</span><span>Fake engagement, scams, fake accounts</span></label>
+          <button data-next="1" data-user="${user}" aria-disabled="true">Next</button>
+        </div>`;
+    }
+
+    function showStep2(user) {
+      // Rendered asynchronously, like X
+      layers.innerHTML = '';
+      setTimeout(() => {
+        layers.innerHTML = `
+          <div role="dialog" data-user="${user}">
+            <label><input type="radio" name="s"><span>Fake engagement</span></label>
+            <label><input type="radio" name="s"><span>Scams</span></label>
+            <button data-next="2" data-user="${user}" aria-disabled="true">Next</button>
+          </div>`;
+      }, 300);
+    }
+
+    function showStep3(user) {
+      layers.innerHTML = `
+        <div role="dialog" data-user="${user}">
+          <p>Thanks for helping make X better.</p>
+          <div role="button" data-block="1">Block @${user}</div>
+          <div role="button">Mute @${user}</div>
+          <div role="button" data-done="1" data-user="${user}">Done</div>
+        </div>`;
+    }
+  </script>
+</body>
+</html>

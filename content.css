@@ -1,2 +1,276 @@
-/* Bot Exploder - Minimal Styles */
-/* Most styles injected via content.js */
+/* Bot Exploder - Content Styles */
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.be-btn-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.be-btn,
+.be-dislike-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: #536471;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.be-btn svg,
+.be-dislike-btn svg {
+  transition: transform 0.15s;
+}
+
+.be-btn:focus-visible,
+.be-dislike-btn:focus-visible {
+  outline: 2px solid #1d9bf0;
+  outline-offset: 1px;
+}
+
+/* Remove button - red square on hover */
+.be-btn:hover:not(:disabled) {
+  background: #dc2626;
+  color: #fff;
+}
+
+.be-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Dislike button - yellow square on hover */
+.be-dislike-btn:hover {
+  background: #eab308;
+  color: #000;
+}
+
+.be-btn:hover:not(:disabled) svg,
+.be-dislike-btn:hover svg {
+  transform: scale(1.1);
+}
+
+.be-dislike-btn.active {
+  color: #eab308;
+}
+
+/* ============================================
+   SHARED OVERLAY (disliked + ads)
+   ============================================ */
+
+.be-disliked,
+.be-ad {
+  position: relative;
+}
+
+.be-disliked::before,
+.be-ad::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.2s ease-out;
+}
+
+.be-disliked::after,
+.be-ad::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.2s ease-out;
+}
+
+.be-disliked:hover::before,
+.be-disliked:hover::after,
+.be-ad:hover::before,
+.be-ad:hover::after {
+  opacity: 0;
+}
+
+/* Disliked tweets - darker treatment */
+.be-disliked::before {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.be-disliked::after {
+  content: 'you dislike this person';
+  opacity: 0.8;
+}
+
+.be-disliked > * {
+  filter: grayscale(0.6) brightness(0.7);
+  transition: filter 0.2s ease-out;
+}
+
+.be-disliked:hover > * {
+  filter: none;
+}
+
+/* Ads - blurred */
+.be-ad::before {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.be-ad::after {
+  content: 'ad';
+  opacity: 0.6;
+}
+
+/* ============================================
+   VIDEO HOLD
+   ============================================ */
+
+.be-video-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  z-index: 10;
+  transition: opacity 0.3s ease-out;
+}
+
+.be-video-overlay.be-video-revealed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.be-video-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: background 0.2s ease-out, transform 0.2s ease-out;
+}
+
+.be-video-overlay:hover .be-video-icon {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.1);
+}
+
+.be-video-text {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* ============================================
+   EXPLOSION VISUALS
+   ============================================ */
+
+.be-container {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  color: #000;
+}
+
+/* Follow X's dark / dim themes */
+.be-dark .be-container {
+  color: #fff;
+}
+
+.be-dot {
+  position: absolute;
+  background: currentColor;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: be-dot var(--be-duration) ease-out forwards;
+}
+
+.be-line {
+  position: absolute;
+  width: 1px;
+  background: currentColor;
+  transform-origin: center top;
+  transform: rotate(var(--be-angle));
+  animation: be-line var(--be-duration) ease-out forwards;
+}
+
+.be-ring {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: be-ring 400ms ease-out forwards;
+}
+
+@keyframes be-dot {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--be-dx)), calc(-50% + var(--be-dy))) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes be-line {
+  0% {
+    opacity: 1;
+    height: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes be-ring {
+  0% {
+    width: 10px;
+    height: 10px;
+    opacity: 1;
+  }
+  100% {
+    width: var(--be-size);
+    height: var(--be-size);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .be-dot,
+  .be-line,
+  .be-ring {
+    animation-duration: 1ms;
+  }
+}

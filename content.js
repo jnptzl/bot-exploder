@@ -1,211 +1,48 @@
-// Bot Exploder - Minimal Content Script
+// Bot Exploder - Content Script
+// Depends on shared.js (BE_DEFAULT_CONFIG, BEStorage, BEAudio)
 
 (function() {
   'use strict';
 
-  const processedTweets = new WeakSet();
+  const TWEET = 'article[data-testid="tweet"]';
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  let config = { ...BE_DEFAULT_CONFIG };
   let dislikedUsers = new Set();
 
-  // Default config
-  let config = {
-    soundType: 'white',
-    visualStyle: 'dots',
-    duration: 120,
-    volume: 30,
-    particles: 16,
-    spread: 60,
-    nudge: 2,
-    fadeEnabled: true,
-    reportEnabled: true,
-    blockEnabled: true,
-    dislikeStyle: 'blur' // blur, dim, grayscale
-  };
-
-  // Load config and disliked users
-  async function loadConfig() {
-    try {
-      const result = await chrome.storage.sync.get(['botExploderConfig', 'dislikedUsers']);
-      if (result.botExploderConfig) {
-        config = { ...config, ...result.botExploderConfig };
-      }
-      if (result.dislikedUsers) {
-        dislikedUsers = new Set(result.dislikedUsers);
-      }
-    } catch (e) {}
+  async function loadState() {
+    config = await BEStorage.getConfig();
+    dislikedUsers = new Set(await BEStorage.getDisliked());
   }
 
-  // Save disliked users
-  async function saveDislikedUsers() {
-    try {
-      await chrome.storage.sync.set({ dislikedUsers: [...dislikedUsers] });
-    } catch (e) {}
-  }
-
-  // Listen for config updates
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type === 'configUpdated') {
-      config = { ...config, ...msg.config };
-    }
-    if (msg.type === 'dislikedUsersUpdated') {
-      dislikedUsers = new Set(msg.users);
-      applyDislikeStyles();
-    }
+  // Popup (or another tab) changed something
+  BEStorage.onChange(({ config: newConfig, dislikedUsers: users }) => {
+    if (newConfig) config = newConfig;
+    if (users) dislikedUsers = new Set(users);
+    scan();
   });
 
-  // ============================================
-  // MINIMAL AUDIO
-  // ============================================
-
-  const Audio = {
-    ctx: null,
-
-    getContext() {
-      if (!this.ctx) {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      if (this.ctx.state === 'suspended') this.ctx.resume();
-      return this.ctx;
-    },
-
-    playWhite(duration, volume) {
-      const ctx = this.getContext();
-      const samples = ctx.sampleRate * (duration / 1000);
-      const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-
-      for (let i = 0; i < samples; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(volume, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-
-      source.connect(gain).connect(ctx.destination);
-      source.start();
-    },
-
-    playBrown(duration, volume) {
-      const ctx = this.getContext();
-      const samples = ctx.sampleRate * (duration / 1000);
-      const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-
-      let last = 0;
-      for (let i = 0; i < samples; i++) {
-        const white = Math.random() * 2 - 1;
-        data[i] = (last + 0.02 * white) / 1.02;
-        last = data[i];
-        data[i] *= 3.5;
-      }
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(volume, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-
-      source.connect(gain).connect(ctx.destination);
-      source.start();
-    },
-
-    playPink(duration, volume) {
-      const ctx = this.getContext();
-      const samples = ctx.sampleRate * (duration / 1000);
-      const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-
-      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-      for (let i = 0; i < samples; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.99886 * b0 + white * 0.0555179;
-        b1 = 0.99332 * b1 + white * 0.0750759;
-        b2 = 0.96900 * b2 + white * 0.1538520;
-        b3 = 0.86650 * b3 + white * 0.3104856;
-        b4 = 0.55000 * b4 + white * 0.5329522;
-        b5 = -0.7616 * b5 - white * 0.0168980;
-        data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
-        b6 = white * 0.115926;
-      }
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(volume, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-
-      source.connect(gain).connect(ctx.destination);
-      source.start();
-    },
-
-    playBlip(duration, volume) {
-      const ctx = this.getContext();
-      const now = ctx.currentTime;
-      const dur = Math.min(duration, 80) / 1000;
-
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(800, now);
-      osc.frequency.exponentialRampToValueAtTime(200, now + dur);
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(volume, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + dur);
-    },
-
-    play() {
-      const vol = config.volume / 100;
-      const dur = config.duration;
-
-      switch (config.soundType) {
-        case 'white': this.playWhite(dur, vol); break;
-        case 'brown': this.playBrown(dur, vol); break;
-        case 'pink': this.playPink(dur, vol); break;
-        case 'blip': this.playBlip(dur, vol); break;
-      }
-    }
-  };
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
 
   // ============================================
-  // MINIMAL VISUALS
+  // VISUALS
   // ============================================
 
   function createVisual(element) {
     if (config.visualStyle === 'none') return;
 
     const rect = element.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2 + window.scrollX;
-    const cy = rect.top + rect.height / 2 + window.scrollY;
-
     const container = document.createElement('div');
     container.className = 'be-container';
-    container.style.cssText = `
-      position: absolute;
-      left: ${cx}px;
-      top: ${cy}px;
-      pointer-events: none;
-      z-index: 999999;
-    `;
+    container.style.left = `${rect.left + rect.width / 2}px`;
+    container.style.top = `${rect.top + rect.height / 2}px`;
 
     switch (config.visualStyle) {
-      case 'dots':
-        createDots(container);
-        break;
-      case 'lines':
-        createLines(container);
-        break;
-      case 'ring':
-        createRing(container);
-        break;
+      case 'dots': createDots(container); break;
+      case 'lines': createLines(container); break;
+      case 'ring': createRing(container); break;
     }
 
     document.body.appendChild(container);
@@ -221,43 +58,28 @@
       const angle = (i / count) * Math.PI * 2;
       const distance = spread * (0.5 + Math.random() * 0.5);
       const size = 2 + Math.random() * 3;
-      const duration = 300 + Math.random() * 200;
 
-      dot.style.cssText = `
-        position: absolute;
-        width: ${size}px;
-        height: ${size}px;
-        background: #000;
-        border-radius: 50%;
-        transform: translate(-50%, -50%);
-        animation: be-dot ${duration}ms ease-out forwards;
-        --dx: ${Math.cos(angle) * distance}px;
-        --dy: ${Math.sin(angle) * distance}px;
-      `;
+      dot.className = 'be-dot';
+      dot.style.width = dot.style.height = `${size}px`;
+      dot.style.setProperty('--be-duration', `${300 + Math.random() * 200}ms`);
+      dot.style.setProperty('--be-dx', `${Math.cos(angle) * distance}px`);
+      dot.style.setProperty('--be-dy', `${Math.sin(angle) * distance}px`);
 
       container.appendChild(dot);
     }
   }
 
   function createLines(container) {
-    const count = Math.floor(config.particles / 2);
+    const count = Math.max(2, Math.floor(config.particles / 2));
     const spread = config.spread;
 
     for (let i = 0; i < count; i++) {
       const line = document.createElement('div');
-      const angle = (i / count) * Math.PI * 2;
-      const length = spread * (0.4 + Math.random() * 0.6);
-      const duration = 250 + Math.random() * 150;
 
-      line.style.cssText = `
-        position: absolute;
-        width: 1px;
-        height: ${length}px;
-        background: #000;
-        transform-origin: center top;
-        transform: rotate(${angle}rad);
-        animation: be-line ${duration}ms ease-out forwards;
-      `;
+      line.className = 'be-line';
+      line.style.height = `${spread * (0.4 + Math.random() * 0.6)}px`;
+      line.style.setProperty('--be-angle', `${(i / count) * Math.PI * 2}rad`);
+      line.style.setProperty('--be-duration', `${250 + Math.random() * 150}ms`);
 
       container.appendChild(line);
     }
@@ -265,567 +87,399 @@
 
   function createRing(container) {
     const ring = document.createElement('div');
-    const spread = config.spread;
-
-    ring.style.cssText = `
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      border: 1px solid #000;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      animation: be-ring 400ms ease-out forwards;
-      --size: ${spread * 2}px;
-    `;
-
+    ring.className = 'be-ring';
+    ring.style.setProperty('--be-size', `${config.spread * 2}px`);
     container.appendChild(ring);
   }
 
-  function nudge() {
-    if (config.nudge === 0) return;
+  // Shake the timeline column, not <body>: a transform on <body> turns it
+  // into the containing block for X's position:fixed layers (menus, dialogs),
+  // which pushes the report dialog off-screen.
+  function nudge(tweet) {
+    if (!config.nudge || reducedMotion.matches) return;
 
+    const target = document.querySelector('[data-testid="primaryColumn"]') || tweet;
     const amount = config.nudge;
-    document.body.style.transition = 'transform 0.08s ease-out';
-    document.body.style.transform = `translateX(${amount}px)`;
+    target.animate([
+      { transform: 'translateX(0)' },
+      { transform: `translateX(${amount}px)`, offset: 0.33 },
+      { transform: `translateX(${-amount * 0.4}px)`, offset: 0.66 },
+      { transform: 'translateX(0)' }
+    ], { duration: 120, easing: 'ease-out' });
+  }
 
-    setTimeout(() => {
-      document.body.style.transform = `translateX(-${amount * 0.4}px)`;
-      setTimeout(() => {
-        document.body.style.transform = 'translateX(0)';
-      }, 40);
-    }, 40);
+  // X renders light, dim and lights-out themes; flip particle color to match
+  function updateTheme() {
+    const rgba = (getComputedStyle(document.body).backgroundColor.match(/[\d.]+/g) || []).map(Number);
+    const opaque = rgba.length === 3 || (rgba.length === 4 && rgba[3] > 0);
+    const dark = opaque && (0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2]) < 128;
+    document.documentElement.classList.toggle('be-dark', dark);
   }
 
   // ============================================
   // DISLIKE SYSTEM
   // ============================================
 
+  const RESERVED_PATHS = new Set([
+    'home', 'explore', 'notifications', 'messages', 'search', 'settings',
+    'compose', 'i', 'hashtag', 'lists', 'communities', 'premium'
+  ]);
+
+  function parseUserHref(href) {
+    const match = href && href.match(/^\/([A-Za-z0-9_]{1,15})$/);
+    if (!match || RESERVED_PATHS.has(match[1].toLowerCase())) return null;
+    return match[1].toLowerCase();
+  }
+
   function getUsername(tweet) {
-    // Find the username link in the tweet
-    const links = tweet.querySelectorAll('a[href^="/"]');
-    for (const link of links) {
-      const href = link.getAttribute('href');
-      // Skip non-user links
-      if (href && href.match(/^\/[a-zA-Z0-9_]+$/) && !href.includes('/status/')) {
-        return href.slice(1).toLowerCase();
-      }
+    // The author block. Avoids the "X reposted" link above retweets.
+    const authorLink = tweet.querySelector('[data-testid="User-Name"] a[href^="/"]');
+    const author = authorLink && parseUserHref(authorLink.getAttribute('href'));
+    if (author) return author;
+
+    for (const link of tweet.querySelectorAll('a[href^="/"]')) {
+      if (link.closest('[data-testid="socialContext"]') ||
+          link.querySelector('[data-testid="socialContext"]')) continue;
+      const user = parseUserHref(link.getAttribute('href'));
+      if (user) return user;
     }
     return null;
   }
 
   function isDisliked(username) {
-    return username && dislikedUsers.has(username.toLowerCase());
+    return !!username && dislikedUsers.has(username);
   }
 
-  function toggleDislike(username) {
-    if (!username) return false;
-    const lower = username.toLowerCase();
-
-    if (dislikedUsers.has(lower)) {
-      dislikedUsers.delete(lower);
+  async function toggleDislike(username) {
+    if (dislikedUsers.has(username)) {
+      dislikedUsers.delete(username);
     } else {
-      dislikedUsers.add(lower);
+      dislikedUsers.add(username);
     }
-
-    saveDislikedUsers();
-    applyDislikeStyles();
-    return dislikedUsers.has(lower);
+    scan();
+    await BEStorage.setDisliked(dislikedUsers);
+    return dislikedUsers.has(username);
   }
 
-  function applyDislikeStyles() {
-    document.querySelectorAll('article[data-testid="tweet"]').forEach(tweet => {
-      const username = getUsername(tweet);
-      const isUserDisliked = isDisliked(username);
+  function applyDislikeStyle(tweet) {
+    const disliked = isDisliked(getUsername(tweet));
+    tweet.classList.toggle('be-disliked', disliked);
 
-      tweet.classList.toggle('be-disliked', isUserDisliked);
-
-      // Update dislike button state
-      const dislikeBtn = tweet.querySelector('.be-dislike-btn');
-      if (dislikeBtn) {
-        dislikeBtn.classList.toggle('active', isUserDisliked);
-        dislikeBtn.title = isUserDisliked ? 'Remove from disliked' : 'Dislike this user';
-      }
-    });
+    const btn = tweet.querySelector('.be-dislike-btn');
+    if (btn) {
+      btn.classList.toggle('active', disliked);
+      btn.setAttribute('aria-pressed', String(disliked));
+      btn.title = disliked ? 'Remove from disliked' : 'Dislike this user';
+    }
   }
 
   // ============================================
-  // AD BLOCKING
+  // AD HIDING
   // ============================================
 
-  const processedAds = new WeakSet();
+  const adCache = new WeakMap();
 
-  function processAds() {
-    document.querySelectorAll('article[data-testid="tweet"]').forEach(tweet => {
-      if (processedAds.has(tweet)) return;
+  function hasAdLabel(tweet) {
+    for (const span of tweet.querySelectorAll('span')) {
+      if (span.childElementCount) continue;
+      const text = span.textContent.trim();
+      if (text === 'Ad' || text === 'Promoted') return true;
+    }
+    return false;
+  }
 
-      // Look for "Ad" label in the tweet
-      const spans = tweet.querySelectorAll('span');
-      let isAd = false;
-
-      for (const span of spans) {
-        const text = span.textContent.trim();
-        if (text === 'Ad' || text === 'Promoted') {
-          isAd = true;
-          break;
-        }
-      }
-
-      if (isAd) {
-        processedAds.add(tweet);
-        tweet.classList.add('be-ad');
-      }
-    });
+  function processAd(tweet) {
+    if (!adCache.has(tweet)) {
+      // Wait until the header has rendered before deciding
+      if (!tweet.querySelector('[data-testid="User-Name"]')) return;
+      adCache.set(tweet, hasAdLabel(tweet));
+    }
+    tweet.classList.toggle('be-ad', config.hideAds && adCache.get(tweet));
   }
 
   // ============================================
-  // VIDEO BLOCKING
+  // VIDEO HOLD
   // ============================================
 
-  const processedVideos = new WeakSet();
+  const watchedVideos = new WeakSet();
+  const revealedVideos = new WeakSet();
 
   function processVideos() {
-    // Find video containers in tweets
-    document.querySelectorAll('video').forEach(video => {
-      if (processedVideos.has(video)) return;
-      processedVideos.add(video);
+    if (!config.holdVideos) {
+      document.querySelectorAll('.be-video-overlay').forEach(o => o.remove());
+      return;
+    }
+    document.querySelectorAll(`${TWEET} video`).forEach(holdVideo);
+  }
 
-      // Pause the video
-      video.pause();
-      video.autoplay = false;
+  function holdVideo(video) {
+    if (revealedVideos.has(video)) return;
 
-      // Find the container to overlay
-      const container = video.closest('[data-testid="videoComponent"]') ||
-                        video.closest('[data-testid="videoPlayer"]') ||
-                        video.parentElement;
+    const container = video.closest('[data-testid="videoComponent"]') ||
+                      video.closest('[data-testid="videoPlayer"]') ||
+                      video.parentElement;
+    if (!container || container.querySelector('.be-video-overlay')) return;
 
-      if (!container || container.querySelector('.be-video-overlay')) return;
+    video.pause();
+    video.autoplay = false;
 
+    if (getComputedStyle(container).position === 'static') {
       container.style.position = 'relative';
+    }
 
-      // Create blur overlay
-      const overlay = document.createElement('div');
-      overlay.className = 'be-video-overlay';
-      overlay.innerHTML = `
-        <div class="be-video-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-            <polygon points="5,3 19,12 5,21" fill="currentColor"/>
-          </svg>
-        </div>
-        <span class="be-video-text">click to play</span>
-      `;
+    const overlay = document.createElement('div');
+    overlay.className = 'be-video-overlay';
+    overlay.innerHTML = `
+      <div class="be-video-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <polygon points="5,3 19,12 5,21" fill="currentColor"/>
+        </svg>
+      </div>
+      <span class="be-video-text">click to play</span>
+    `;
 
-      overlay.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        overlay.classList.add('be-video-revealed');
-        video.play();
-      });
-
-      container.appendChild(overlay);
-
-      // Re-pause if video tries to autoplay
-      video.addEventListener('play', () => {
-        if (!overlay.classList.contains('be-video-revealed')) {
-          video.pause();
-        }
-      });
+    overlay.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      revealedVideos.add(video);
+      overlay.classList.add('be-video-revealed');
+      video.play().catch(() => {});
     });
+
+    container.appendChild(overlay);
+
+    // X restarts playback as videos scroll into view
+    if (!watchedVideos.has(video)) {
+      watchedVideos.add(video);
+      video.addEventListener('play', () => {
+        if (config.holdVideos && !revealedVideos.has(video)) video.pause();
+      });
+    }
   }
 
   // ============================================
-  // REPORT FUNCTIONALITY
+  // REPORT FLOW
   // ============================================
+  // Every lookup is scoped to #layers, where X renders menus and dialogs.
+  // Searching the whole document would match tweet text in the timeline
+  // ("next", "block", "done"...) and click random things.
 
-  function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
+  const CLICKABLE = [
+    '[role="menuitem"]', '[role="button"]', '[role="radio"]',
+    '[role="option"]', '[role="checkbox"]', 'button', 'label'
+  ].join(', ');
+
+  function layers() {
+    return document.getElementById('layers');
   }
 
-  function findByText(text) {
-    const selectors = ['[role="menuitem"]', '[role="button"]', '[role="option"]', 'span', 'div[dir="ltr"]'];
-    for (const sel of selectors) {
-      for (const el of document.querySelectorAll(sel)) {
-        if (el.textContent.toLowerCase().includes(text.toLowerCase())) {
-          return el.closest('[role="menuitem"], [role="button"], [role="option"], label, [tabindex]') || el;
-        }
-      }
+  function normalize(text) {
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
+  function isEnabled(el) {
+    return !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  }
+
+  // X builds options from adjacent spans ("Spam" + "Fake engagement, ..."),
+  // whose combined textContent has no separator, so test each leaf too.
+  function matchesText(el, pattern) {
+    if (pattern.test(normalize(el.textContent))) return true;
+    for (const leaf of el.querySelectorAll('*')) {
+      if (!leaf.childElementCount && pattern.test(normalize(leaf.textContent))) return true;
+    }
+    return false;
+  }
+
+  function findInLayers(pattern) {
+    const root = layers();
+    if (!root) return null;
+    for (const el of root.querySelectorAll(CLICKABLE)) {
+      if (isEnabled(el) && matchesText(el, pattern)) return el;
     }
     return null;
   }
 
-  async function reportTweet(tweet) {
-    if (!config.reportEnabled) return;
+  async function waitFor(pattern, timeout = 2500) {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      const el = findInLayers(pattern);
+      if (el) return el;
+      await sleep(100);
+    }
+    return null;
+  }
 
+  async function clickWhenReady(pattern, timeout) {
+    const el = await waitFor(pattern, timeout);
+    if (!el) return false;
+    el.click();
+    await sleep(250);
+    return true;
+  }
+
+  function dismissMenu() {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+  }
+
+  const NEXT = /^(next|submit)$/i;
+
+  // Returns a short description of how far it got, for logging
+  async function reportTweet(tweet) {
     const caret = tweet.querySelector('[data-testid="caret"]');
-    if (!caret) return;
+    if (!caret) return 'no menu button';
 
     caret.click();
-    await sleep(300);
+    if (!await clickWhenReady(/^report\b/i)) {
+      dismissMenu();
+      return 'no report option';
+    }
 
-    const report = findByText('report');
-    if (!report) { document.body.click(); return; }
+    // Category, then (optionally) a sub-category. Each may need "Next".
+    if (!await clickWhenReady(/^spam\b/i)) return 'no spam category';
+    await clickWhenReady(NEXT, 1500);
 
-    report.click();
-    await sleep(500);
-
-    const spam = findByText('spam') || findByText('fake');
-    if (spam) { spam.click(); await sleep(300); }
-
-    const next = findByText('next') || findByText('submit');
-    if (next) { next.click(); await sleep(400); }
-
-    const sub = findByText('fake') || findByText('engagement') || findByText('spam');
-    if (sub) { sub.click(); await sleep(300); }
-
-    const next2 = findByText('next') || findByText('submit');
-    if (next2) { next2.click(); await sleep(400); }
+    if (await clickWhenReady(/^(fake engagement|fake account|spam)\b/i, 1500)) {
+      await clickWhenReady(NEXT, 1500);
+    }
 
     if (config.blockEnabled) {
-      const block = findByText('block');
-      if (block) {
-        const cb = block.querySelector('input[type="checkbox"]') || block;
-        if (cb && !cb.checked) cb.click();
-        await sleep(200);
+      if (await clickWhenReady(/^block\b/i, 2500)) {
+        // Some flows confirm the block in a second sheet
+        const confirm = layers()?.querySelector('[data-testid="confirmationSheetConfirm"]');
+        if (confirm) { confirm.click(); await sleep(250); }
       }
     }
 
-    const done = findByText('done') || findByText('submit');
-    if (done) done.click();
+    await clickWhenReady(/^(done|submit)$/i, 1500);
+    return 'ok';
+  }
+
+  // One dialog at a time: rapid clicks on several tweets queue up
+  let reportQueue = Promise.resolve();
+
+  function enqueueReport(tweet) {
+    const run = reportQueue.then(() => reportTweet(tweet)).catch(e => String(e));
+    reportQueue = run;
+    return run;
   }
 
   // ============================================
-  // TWEET PROCESSING
+  // TWEET BUTTONS
   // ============================================
 
-  function addButton(tweet) {
-    if (processedTweets.has(tweet)) return;
-    processedTweets.add(tweet);
+  const DISLIKE_ICON = `
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M9 3v10M5 9l4 6 4-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
 
-    const actionBar = tweet.querySelector('[role="group"]');
-    if (!actionBar) return;
+  const REMOVE_ICON = `
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1"/>
+      <circle cx="9" cy="9" r="2" fill="currentColor"/>
+    </svg>
+  `;
 
-    const username = getUsername(tweet);
+  async function onDislikeClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
 
-    // Dislike button (arrow down)
-    const dislikeBtn = document.createElement('button');
-    dislikeBtn.className = 'be-dislike-btn' + (isDisliked(username) ? ' active' : '');
-    dislikeBtn.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <path d="M9 3v10M5 9l4 6 4-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `;
-    dislikeBtn.title = isDisliked(username) ? 'Remove from disliked' : 'Dislike this user';
+    const tweet = e.currentTarget.closest(TWEET);
+    const username = tweet && getUsername(tweet);
+    if (!username) return;
 
-    dislikeBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    const nowDisliked = await toggleDislike(username);
+    if (config.volume > 0) {
+      const freq = nowDisliked ? 300 : 500;
+      BEAudio.tone(freq, freq, 50, config.volume / 400);
+    }
+  }
 
-      const nowDisliked = toggleDislike(username);
+  async function onRemoveClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
 
-      // Small feedback sound
-      if (config.volume > 0) {
-        const ctx = Audio.getContext();
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = nowDisliked ? 300 : 500;
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(config.volume / 400, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.05);
-      }
-    });
+    const btn = e.currentTarget;
+    const tweet = btn.closest(TWEET);
+    if (!tweet || btn.disabled) return;
+    btn.disabled = true;
 
-    // Remove/report button
+    BEAudio.play(config);
+    createVisual(tweet);
+    nudge(tweet);
+
+    if (config.fadeEnabled) {
+      tweet.style.transition = 'opacity 0.4s ease-out';
+      tweet.style.opacity = '0.15';
+    }
+
+    if (config.reportEnabled) {
+      const result = await enqueueReport(tweet);
+      if (result !== 'ok') console.warn(`[Bot Exploder] report incomplete: ${result}`);
+    }
+
+    await sleep(200);
+    tweet.style.transition = 'opacity 0.3s ease-out';
+    tweet.style.opacity = '0';
+    await sleep(300);
+    tweet.style.display = 'none';
+  }
+
+  function makeButton(className, icon, label, onClick) {
     const btn = document.createElement('button');
-    btn.className = 'be-btn';
-    btn.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1"/>
-        <circle cx="9" cy="9" r="2" fill="currentColor"/>
-      </svg>
-    `;
-    btn.title = 'Remove';
+    btn.type = 'button';
+    btn.className = className;
+    btn.innerHTML = icon;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
 
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      btn.disabled = true;
-      btn.style.opacity = '0.3';
-
-      Audio.play();
-      createVisual(tweet);
-      nudge();
-
-      if (config.fadeEnabled) {
-        tweet.style.transition = 'opacity 0.4s ease-out';
-        tweet.style.opacity = '0.15';
-      }
-
-      await reportTweet(tweet);
-
-      setTimeout(() => {
-        tweet.style.opacity = '0';
-        setTimeout(() => { tweet.style.display = 'none'; }, 300);
-      }, 200);
-    });
+  function ensureButtons(tweet) {
+    const actionBar = tweet.querySelector('[role="group"]:has([data-testid="reply"])') ||
+                      tweet.querySelector('[role="group"]');
+    // React re-renders can drop our wrapper, so check the DOM rather than a cache
+    if (!actionBar || actionBar.querySelector('.be-btn-wrap')) return;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'be-btn-wrap';
-    wrapper.appendChild(dislikeBtn);
-    wrapper.appendChild(btn);
+    wrapper.appendChild(makeButton('be-dislike-btn', DISLIKE_ICON, 'Dislike this user', onDislikeClick));
+    wrapper.appendChild(makeButton('be-btn', REMOVE_ICON, 'Remove', onRemoveClick));
     actionBar.appendChild(wrapper);
-
-    // Apply initial dislike style if needed
-    if (isDisliked(username)) {
-      tweet.classList.add('be-disliked');
-    }
-  }
-
-  function processTweets() {
-    document.querySelectorAll('article[data-testid="tweet"]').forEach(addButton);
   }
 
   // ============================================
-  // INIT
+  // SCAN
   // ============================================
+
+  function scan() {
+    updateTheme();
+    document.querySelectorAll(TWEET).forEach(tweet => {
+      ensureButtons(tweet);
+      applyDislikeStyle(tweet);
+      processAd(tweet);
+    });
+    processVideos();
+  }
+
+  // X mutates the DOM constantly; batch scans to at most one per frame
+  let scanPending = false;
+
+  function scheduleScan() {
+    if (scanPending) return;
+    scanPending = true;
+    requestAnimationFrame(() => {
+      scanPending = false;
+      scan();
+    });
+  }
 
   async function init() {
-    await loadConfig();
-
-    // Inject styles
-    const style = document.createElement('style');
-    style.textContent = `
-      .be-btn-wrap {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        margin-left: 4px;
-      }
-      .be-btn,
-      .be-dislike-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        padding: 8px;
-        cursor: pointer;
-        color: #536471;
-        border-radius: 4px;
-        transition: all 0.15s;
-      }
-
-      /* Report button - red square on hover */
-      .be-btn:hover {
-        background: #dc2626;
-        color: #fff;
-        border-radius: 4px;
-      }
-      .be-btn:hover svg {
-        transform: scale(1.1);
-      }
-
-      /* Dislike button - yellow square on hover */
-      .be-dislike-btn:hover {
-        background: #eab308;
-        color: #000;
-        border-radius: 4px;
-      }
-      .be-dislike-btn:hover svg {
-        transform: scale(1.1);
-      }
-      .be-dislike-btn.active {
-        color: #eab308;
-      }
-
-      /* Disliked tweet styles - darker treatment */
-      .be-disliked {
-        position: relative;
-        transition: all 0.3s ease-out;
-      }
-      .be-disliked::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        pointer-events: none;
-        z-index: 1;
-        transition: opacity 0.2s ease-out;
-      }
-      .be-disliked::after {
-        content: 'you dislike this person';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: #fff;
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        pointer-events: none;
-        z-index: 2;
-        opacity: 0.8;
-        transition: opacity 0.2s ease-out;
-      }
-      .be-disliked > * {
-        filter: grayscale(0.6) brightness(0.7);
-        transition: all 0.2s ease-out;
-      }
-      .be-disliked:hover > * {
-        filter: grayscale(0) brightness(1);
-      }
-      .be-disliked:hover::before {
-        opacity: 0;
-      }
-      .be-disliked:hover::after {
-        opacity: 0;
-      }
-      .be-disliked .be-btn-wrap {
-        filter: none !important;
-        position: relative;
-        z-index: 3;
-      }
-
-      @keyframes be-dot {
-        0% {
-          transform: translate(-50%, -50%) scale(1);
-          opacity: 1;
-        }
-        100% {
-          transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.5);
-          opacity: 0;
-        }
-      }
-      @keyframes be-line {
-        0% {
-          opacity: 1;
-          height: 0;
-        }
-        50% {
-          opacity: 1;
-        }
-        100% {
-          opacity: 0;
-        }
-      }
-      @keyframes be-ring {
-        0% {
-          width: 10px;
-          height: 10px;
-          opacity: 1;
-        }
-        100% {
-          width: var(--size);
-          height: var(--size);
-          opacity: 0;
-        }
-      }
-
-      /* Ad blocking styles */
-      .be-ad {
-        position: relative;
-        transition: all 0.3s ease-out;
-      }
-      .be-ad::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(8px);
-        pointer-events: none;
-        z-index: 1;
-        transition: opacity 0.2s ease-out;
-      }
-      .be-ad::after {
-        content: 'ad';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: #fff;
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        pointer-events: none;
-        z-index: 2;
-        opacity: 0.6;
-        transition: opacity 0.2s ease-out;
-      }
-      .be-ad:hover::before {
-        opacity: 0;
-      }
-      .be-ad:hover::after {
-        opacity: 0;
-      }
-
-      /* Video blocking styles */
-      .be-video-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(20px);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        cursor: pointer;
-        z-index: 10;
-        transition: opacity 0.3s ease-out;
-      }
-      .be-video-overlay.be-video-revealed {
-        opacity: 0;
-        pointer-events: none;
-      }
-      .be-video-icon {
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.15);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
-        transition: all 0.2s ease-out;
-      }
-      .be-video-overlay:hover .be-video-icon {
-        background: rgba(255, 255, 255, 0.25);
-        transform: scale(1.1);
-      }
-      .be-video-text {
-        color: #fff;
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        opacity: 0.7;
-      }
-    `;
-    document.head.appendChild(style);
-
-    processTweets();
-    processVideos();
-    processAds();
-
-    const observer = new MutationObserver(() => {
-      processTweets();
-      processVideos();
-      processAds();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    await loadState();
+    scan();
+    new MutationObserver(scheduleScan).observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === 'loading') {
