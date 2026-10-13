@@ -78,4 +78,4 @@ npm run icons    # regenerate assets/icon*.png
 
 ---
 
-v2.3.0
+v2.3.1

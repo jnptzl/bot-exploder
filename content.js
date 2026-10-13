@@ -240,12 +240,24 @@
     if (!video.muted) video.muted = true;
   }
 
+  // Start through X's own play button when there is one, so the player
+  // knows it's playing and its pause button keeps working
+  function startThroughPlayer(video, player) {
+    const button = player.querySelector('[data-testid="playButton"]') ||
+      [...player.querySelectorAll('button, [role="button"]')]
+        .find(b => !b.closest('.be-video-overlay') && /^play$/i.test(b.getAttribute('aria-label') || ''));
+    if (button) button.click();
+    setTimeout(() => {
+      if (video.paused) video.play().catch(() => {});
+    }, 300);
+  }
+
   function watchVideo(video) {
     if (watchedVideos.has(video)) return;
     watchedVideos.add(video);
 
     video.addEventListener('play', () => {
-      // X restarts playback as videos scroll into view
+      // Backstop for playback that began before page.js could refuse it
       if (config.holdVideos && !isRevealed(video)) {
         video.pause();
         return;
@@ -271,11 +283,14 @@
     const overlay = player.querySelector('.be-video-overlay');
 
     if (isRevealed(video)) {
-      overlay?.classList.add('be-video-revealed');
+      video.removeAttribute('data-be-held');
+      overlay?.remove();
       return;
     }
 
-    // Also catches a fresh <video> swapped in under an existing overlay
+    // page.js refuses play() on marked videos. Also covers a fresh <video>
+    // swapped in under an existing overlay.
+    video.setAttribute('data-be-held', '');
     if (!video.paused) video.pause();
     video.autoplay = false;
     if (overlay) return;
@@ -304,13 +319,18 @@
       const key = postKey(video);
       if (key) revealedPosts.add(key);
       revealedPlayers.add(player);
+
+      // Fade out, then get out of the way entirely: nothing of ours should
+      // sit on top of X's controls once the video is playing
       el.classList.add('be-video-revealed');
+      setTimeout(() => el.remove(), 300);
 
       const current = player.querySelector('video') || video;
+      current.removeAttribute('data-be-held');
       startedVideos.add(current);
       watchVideo(current);
       muteAtStart(current);
-      current.play().catch(() => {});
+      startThroughPlayer(current, player);
     };
 
     el.addEventListener('click', reveal);
@@ -584,6 +604,7 @@
       dirtyTweets.clear();
       if (!config.holdVideos) {
         document.querySelectorAll('.be-video-overlay').forEach(o => o.remove());
+        document.querySelectorAll('video[data-be-held]').forEach(v => v.removeAttribute('data-be-held'));
       }
       document.querySelectorAll(TWEET).forEach(processTweet);
     } else {

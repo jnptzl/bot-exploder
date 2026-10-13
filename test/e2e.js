@@ -75,6 +75,8 @@ async function main() {
     await page.waitForSelector('article[data-user="video_user"] [data-testid="videoPlayer"] > .be-video-overlay');
     await page.waitForTimeout(1000);
     assert.ok(!await isPlaying(video('video_user')));
+    // X's own button must agree that it's paused, or its controls misbehave later
+    assert.strictEqual(await page.getAttribute('article[data-user="video_user"] .x-play', 'aria-label'), 'Play');
   });
 
   test('overlay label sets its own font instead of inheriting the player', async () => {
@@ -88,10 +90,32 @@ async function main() {
     await page.waitForFunction(sel => !document.querySelector(sel).paused, video('video_user'));
     assert.ok(await page.$eval(video('video_user'), v => v.muted));
     assert.strictEqual(await page.getAttribute('article[data-user="video_user"] .x-mute', 'aria-label'), 'Unmute');
+    assert.strictEqual(await page.getAttribute('article[data-user="video_user"] .x-play', 'aria-label'), 'Pause',
+      "player doesn't know the video is playing");
+    await page.waitForSelector('article[data-user="video_user"] .be-video-overlay', { state: 'detached' });
 
     // One click on the player's own button unmutes
     await page.click('article[data-user="video_user"] .x-mute');
     assert.ok(!await page.$eval(video('video_user'), v => v.muted));
+  });
+
+  test('a video you played can be stopped', async () => {
+    // Pause by clicking the video, as you would on X
+    await page.click(video('video_user'));
+    await page.waitForTimeout(800);
+    assert.ok(!await isPlaying(video('video_user')), 'still playing after clicking it');
+    assert.strictEqual(await page.getAttribute('article[data-user="video_user"] .x-play', 'aria-label'), 'Play');
+
+    // ...and started again with the player's own button
+    await page.click('article[data-user="video_user"] .x-play');
+    await page.waitForFunction(sel => !document.querySelector(sel).paused, video('video_user'));
+    await page.click('article[data-user="video_user"] .x-play');
+    await page.waitForTimeout(800);
+    assert.ok(!await isPlaying(video('video_user')), 'still playing after pressing pause');
+
+    // Leave it playing for the swap test below
+    await page.click('article[data-user="video_user"] .x-play');
+    await page.waitForFunction(sel => !document.querySelector(sel).paused, video('video_user'));
   });
 
   test('a revealed post stays revealed when X swaps the <video>', async () => {

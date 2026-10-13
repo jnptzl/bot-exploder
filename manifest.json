@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bot Exploder",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Minimal bot removal for Twitter/X",
   "permissions": ["storage"],
   "action": {
@@ -13,6 +13,12 @@
     }
   },
   "content_scripts": [
+    {
+      "matches": ["https://twitter.com/*", "https://x.com/*"],
+      "js": ["page.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": ["https://twitter.com/*", "https://x.com/*"],
       "js": ["shared.js", "content.js"],

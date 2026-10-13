@@ -45,6 +45,7 @@
           ${video ? `
             <div data-testid="videoPlayer">
               <div data-testid="videoComponent"><video playsinline></video></div>
+              <button class="x-play" aria-label="Play">▶</button>
               <button class="x-mute" aria-label="Mute">🔊</button>
             </div>` : ''}
           <div role="group" aria-label="actions">
@@ -73,9 +74,40 @@
     addTweet({ user: 'video_user', text: 'video', video: true });
     addTweet({ user: 'video_two', text: 'another video', video: true });
 
-    // X's player, roughly: it remembers that you unmuted, keeps its own mute
-    // state (the button label follows it), and retries autoplay on a timer.
+    // X's player, roughly. It keeps its own idea of whether it's playing,
+    // set by the outcome of its own play()/pause() calls rather than by media
+    // events, and its play/pause button and clicks on the video act on that
+    // idea. It autoplays posts in view until you pause one, and remembers
+    // that you unmuted.
     window.__xMuted = false;
+    const xState = new WeakMap();
+
+    const xVideo = (player) => player.querySelector('video');
+
+    function xInit(player, reset) {
+      if (reset || !xState.has(player)) xState.set(player, { playing: false, userPaused: false, attempts: 0 });
+    }
+
+    function xRender(player) {
+      player.querySelector('.x-play').setAttribute('aria-label', xState.get(player).playing ? 'Pause' : 'Play');
+    }
+
+    function xPlay(player) {
+      const s = xState.get(player);
+      return xVideo(player).play()
+        .then(() => { s.playing = true; }, () => { s.playing = false; })
+        .finally(() => xRender(player));
+    }
+
+    function xPause(player) {
+      const s = xState.get(player);
+      xVideo(player).pause();
+      s.playing = false;
+      s.userPaused = true;
+      xRender(player);
+    }
+
+    window.xToggle = (player) => xState.get(player).playing ? xPause(player) : xPlay(player);
 
     function wireVideo(video) {
       const canvas = document.createElement('canvas');
@@ -87,16 +119,32 @@
     }
 
     document.querySelectorAll('video').forEach(wireVideo);
+    document.querySelectorAll('[data-testid="videoPlayer"]').forEach(xInit);
+
+    // Autoplay as a video comes into view: a few tries (scrolling in and out),
+    // then X gives up and waits for a click
     setInterval(() => {
-      document.querySelectorAll('video').forEach(v => { if (v.paused) v.play().catch(() => {}); });
+      document.querySelectorAll('[data-testid="videoPlayer"]').forEach(player => {
+        xInit(player);
+        const s = xState.get(player);
+        if (!s.playing && !s.userPaused && s.attempts < 2) {
+          s.attempts++;
+          xPlay(player);
+        }
+      });
     }, 300);
 
     document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.x-mute');
-      if (!btn) return;
-      window.__xMuted = !window.__xMuted;
-      btn.closest('[data-testid="videoPlayer"]').querySelector('video').muted = window.__xMuted;
-      btn.setAttribute('aria-label', window.__xMuted ? 'Unmute' : 'Mute');
+      const player = e.target.closest('[data-testid="videoPlayer"]');
+      if (!player) return;
+
+      if (e.target.closest('.x-mute')) {
+        window.__xMuted = !window.__xMuted;
+        xVideo(player).muted = window.__xMuted;
+        e.target.closest('.x-mute').setAttribute('aria-label', window.__xMuted ? 'Unmute' : 'Mute');
+      } else if (e.target.closest('.x-play') || e.target.matches('video')) {
+        xToggle(player);
+      }
     });
 
     // X re-mounts the <video> element when a post re-renders
@@ -106,6 +154,7 @@
       fresh.playsInline = true;
       wireVideo(fresh);
       old.replaceWith(fresh);
+      xInit(fresh.closest('[data-testid="videoPlayer"]'), true);
     };
 
     // Decoys in the timeline that a document-wide text search would hit
